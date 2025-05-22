@@ -1,0 +1,95 @@
+Sua classe de armazenamento offline (OfflineStorage) está muito bem estruturada!
+Ela cobre a grande maioria dos cenários para apps PWA modernos (com IndexedDB, entidades, operações pendentes, arquivos etc).
+
+PONTOS FORTES DO SEU CÓDIGO:
+
+Estrutura clara para pending operations, entidades (dados offline) e arquivos.
+
+Salva e atualiza status de cada operação, com retry e error message.
+
+Salva arquivos binários usando ArrayBuffer.
+
+Permite cache de entidades completas, tipo “registrations”, “vehicles” etc.
+
+Pontos que você PRECISA garantir para o OFFLINE funcionar de verdade
+A estrutura do storage está excelente.
+O que falta agora é garantir o seguinte (e isso depende do uso no restante do app):
+
+1. Interceptar todas as operações CRUD offline
+Salvou registro, editou, deletou... Se estiver offline, chame offlineStorage.savePendingOperation() ao invés de tentar fazer a mutation direta pra API.
+
+O ideal é cada operação ter um formato consistente, por exemplo:
+
+js
+Copiar
+Editar
+{
+  id: "uuid", // sempre único
+  type: "create|update|delete",
+  entity: "registration",
+  payload: { ... },
+  status: "pending",
+  retryCount: 0,
+  timestamp: Date.now()
+}
+Sempre que navigator.onLine === false, redirecione as mutations para o pending.
+
+2. Sincronizar quando voltar o online
+Em algum serviço/scheduler/syncManager, assim que detectar navigator.onLine === true, busque todas as pending operations (via getPendingOperations()), tente enviar para a API, e ao sucesso chame removePendingOperation(id) ou marque como “synced”.
+
+Se der erro, use updateOperationRetry para aumentar o retryCount e guardar o erro.
+
+3. Sincronização de arquivos
+Quando salvar um registro com comprovante, salve o arquivo em offlineFiles.
+
+No fluxo de sincronização, recupere o arquivo com getOfflineFile, envie para API e depois delete do store.
+
+4. Mostrar dados (cache) offline
+Use o método getOfflineDataByType('registrations') quando o usuário abrir o app sem internet.
+
+Faça um fallback nos seus useQuery/hooks para buscar do storage quando a API falhar.
+
+5. Limpar/atualizar cache
+Quando sincronizar com sucesso, atualize o cache dos dados da entidade (registrations, etc.) para refletir o que está no servidor.
+
+Pequenas sugestões de MELHORIA
+ID único para pending operations:
+Se possível, use um UUID ao criar novas pending operations.
+Isso evita conflitos em chaves.
+
+Crie um método utilitário para "processar fila"
+Exemplo (pseudo):
+
+js
+Copiar
+Editar
+async function syncAllPending() {
+  const pendings = await offlineStorage.getPendingOperations();
+  for (const op of pendings) {
+    try {
+      // Envie para API usando o método correto conforme op.type
+      // Exemplo: await apiCreateRegistration(op.payload);
+      await offlineStorage.removePendingOperation(op.id);
+    } catch (err) {
+      await offlineStorage.updateOperationRetry(op.id, op.retryCount + 1, err.message);
+    }
+  }
+}
+Faça logs visuais para o usuário:
+Avise sempre que dados estão pendentes/sincronizando.
+
+Limite de espaço/localStorage:
+IndexedDB é robusto, mas não infinito. Considere remover antigos, limitar arquivos, etc.
+
+RESUMO
+A estrutura do código está correta.
+
+O sucesso do offline depende de:
+
+Interceptar todas as operações CRUD para usar o storage quando offline.
+
+Ter uma rotina de sincronização confiável.
+
+Tratar arquivos pendentes e deletar após upload.
+
+Fallback para o cache ao exibir dados quando offline.

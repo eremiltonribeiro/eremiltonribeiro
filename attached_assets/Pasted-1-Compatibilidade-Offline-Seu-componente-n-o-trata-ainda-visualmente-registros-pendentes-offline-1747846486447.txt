@@ -1,0 +1,79 @@
+1. Compatibilidade Offline
+Seu componente não trata ainda visualmente registros "pendentes" (offline).
+Ou seja, se você cadastrar um registro offline e ele for exibido na lista, provavelmente não haverá indicação de que ele ainda não foi sincronizado, nem botão para tentar re-enviar/editar/excluir enquanto pendente.
+
+Como melhorar:
+Quando um registro tem offlinePending: true (como você define ao salvar offline), exiba um badge tipo “Offline / Pendente” e, opcionalmente, bloqueie a edição/exclusão até a sincronização.
+
+Você pode também destacar a cor do card, adicionar um ícone “clock/offline”, etc.
+
+tsx
+Copiar
+Editar
+{registration.offlinePending && (
+  <span className="ml-2 px-2 py-1 rounded text-xs bg-orange-100 text-orange-800 font-semibold">
+    Offline / Pendente
+  </span>
+)}
+2. Resiliência de Foto (Offline/Erro)
+No trecho de exibição da foto, seu fallback só tenta corrigir caso a URL não seja relativa.
+Se a imagem for armazenada offline (via IndexedDB), será necessário recuperar via Blob/DataURL. Isso não é tratado aqui – só funcionaria se a foto for URL pública ou salva no servidor.
+
+Como melhorar:
+Quando integrar com o armazenamento offline, busque pelo ID/URL salva localmente caso o campo seja offlinePending.
+
+Para exibição offline, converta o ArrayBuffer (salvo no IndexedDB) para DataURL e use como src.
+
+3. Atualização Automática pós-Sincronização
+Você já está usando eventos customizados, mas vale garantir:
+Quando a sincronização ocorre (após voltar online), é ideal chamar queryClient.invalidateQueries(["/api/registrations"]) ou refetch() automaticamente.
+
+Como melhorar:
+No seu componente:
+
+tsx
+Copiar
+Editar
+import { useEffect } from "react";
+//...
+useEffect(() => {
+  function handleDataSync() {
+    queryClient.invalidateQueries(["/api/registrations"]);
+  }
+  window.addEventListener("data-synchronized", handleDataSync);
+  return () => {
+    window.removeEventListener("data-synchronized", handleDataSync);
+  };
+}, [queryClient]);
+Assim, quando a fila de offline for processada, os dados sempre atualizam.
+
+4. Exclusão Offline
+Seu botão de exclusão tenta sempre API REST.
+Para registros “offline”, remova diretamente do IndexedDB (sem tentar API).
+No botão de excluir:
+
+tsx
+Copiar
+Editar
+if (registration.offlinePending) {
+  // Remove direto do IndexedDB
+  await offlineStorage.removePendingOperation(registration.id);
+  await offlineStorage.saveOfflineData("registrations", registrations.filter(r => r.id !== registration.id));
+  // Atualize UI
+  queryClient.invalidateQueries(["/api/registrations"]);
+  setDeleteDialogOpen(false);
+  setRegistrationToDelete(null);
+  toast({ title: "Registro excluído", description: "Removido localmente." });
+  return;
+}
+// ...segue fluxo normal para registros online
+5. Refinar paginação
+Quando filtra/exclui registros, pode ocorrer de a página atual ficar “vazia” (exemplo: na última página com apenas 1 item, você deleta e ela fica sem nada).
+Adicione um ajuste para voltar para a página anterior nesses casos:
+
+tsx
+Copiar
+Editar
+if (paginatedRegistrations.length === 0 && currentPage > 1) {
+  setCurrentPage(currentPage - 1);
+}

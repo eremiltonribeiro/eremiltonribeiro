@@ -1,0 +1,69 @@
+Principais causas de erro no offline (e dicas de diagnóstico)
+1. syncManager não está devidamente implementado
+O syncManager precisa gerenciar tudo que o usuário fez offline e enviar para o backend assim que a conexão voltar.
+
+Se ele só executa no App.tsx mas não intercepta e armazena corretamente cada registro/crud feito sem internet, nada será sincronizado depois.
+
+Checklist: Veja se, ao salvar um registro offline, ele realmente fica salvo em algum storage local (localStorage, IndexedDB, etc).
+
+2. Tanstack Query/Fila de Requests
+A Tanstack Query não faz cache/fila de mutations automaticamente para funcionamento offline.
+
+Para "sincronização offline", você precisa interceptar o submit (mutation) e guardar localmente quando offline, sincronizando depois.
+
+Checklist: Veja se há tratamento para navigator.onLine dentro das mutations/crud.
+
+3. Falha ao detectar status online/offline
+Só escutar navigator.onLine não basta: a rede pode estar “ligada” mas sem internet real.
+
+Checklist: Teste em dispositivos diferentes, desligando o Wi-Fi/dados, e veja se o app mostra mensagens de offline e mantém os dados.
+
+4. Dados sumindo após reload
+Se só usa o state React (em memória), tudo se perde ao recarregar a página.
+
+Tem que persistir dados no localStorage ou IndexedDB para garantir o offline real.
+
+Checklist: Registre um novo dado, recarregue a página ainda offline, e veja se o registro está lá.
+
+5. Falhas de sincronização pós-reconexão
+Quando o app volta para o online, o syncManager deve buscar o que ficou pendente e mandar para o backend.
+
+Se der erro na sincronização (ex: conflito, arquivo corrompido, registro inválido), pode travar toda a fila.
+
+Checklist: Faça vários registros offline, volte ao online, veja se todos são enviados e recebidos corretamente na API.
+
+6. Uploads de arquivos (imagens) offline
+Arquivos (fotos de comprovante) não podem ser enviados enquanto offline.
+
+Eles precisam ser armazenados localmente (ex: IndexedDB) e enviados quando voltar a conexão.
+
+Checklist: Veja se ao anexar imagens offline, elas ficam armazenadas e depois são realmente enviadas para o backend.
+
+7. API/Backend não preparado
+Mesmo se o front guardar tudo certinho, se a API não tratar corretamente o recebimento dos registros "pendentes", vai dar erro (ex: registros duplicados, timestamps errados, etc).
+
+Como Diagnosticar e Corrigir
+Teste offline real: Use o Chrome DevTools → Network → "Offline" e faça o fluxo completo.
+
+Analise o storage: Abra o app, faça ações offline, confira o localStorage/IndexedDB pelo DevTools e veja se está tudo salvo.
+
+Acompanhe logs do syncManager: Implemente logs na sincronização para saber se está rodando e pegando todos os registros pendentes.
+
+Valide o status visual: O usuário deve saber se está offline e quando a sincronização for concluída.
+
+Trate falhas de sincronização: Se algum registro falhar, mostre mensagem clara, mantenha na fila para tentar de novo, etc.
+
+Implemente fallback para arquivos: Imagens/fotos precisam ser persistidas localmente, não só os metadados do registro.
+
+Resumo prático para seu cenário
+Se o syncManager só sincroniza quando o app carrega (e não intercepta todos os CRUDs enquanto offline), ele não é suficiente para funcionamento robusto offline.
+
+O React Query (Tanstack) não cuida disso sozinho.
+
+Para funcionamento offline confiável, precisa:
+
+Persistir cada ação feita offline localmente (IndexedDB é o ideal).
+
+Sincronizar (com retry) tudo que ficou pendente, inclusive arquivos, ao voltar ao online.
+
+Garantir feedback visual ao usuário.
