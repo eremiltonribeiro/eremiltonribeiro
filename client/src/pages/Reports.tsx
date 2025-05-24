@@ -1,4 +1,5 @@
 import { SimpleReportGenerator } from "@/components/vehicles/SimpleReportGenerator";
+import GraphicalDashboard from '@/components/GraphicalDashboard';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Wifi, WifiOff } from "lucide-react";
 
@@ -17,6 +18,7 @@ export default function Reports() {
         </div>
       )}
       
+      <GraphicalDashboard />
       <SimpleReportGenerator />
     </>
   );
