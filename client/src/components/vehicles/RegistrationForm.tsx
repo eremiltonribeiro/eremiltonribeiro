@@ -35,7 +35,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { FileInput } from "@/components/ui/file-input";
-import { Fuel, Wrench, MapPin, CalendarIcon } from "lucide-react";
+import { Fuel, Wrench, MapPin, CalendarIcon, Loader2 } from "lucide-react"; // Adicionado Loader2
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -791,8 +791,19 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
           </CardContent>
 
           <div className="px-6 py-4 bg-gray-50 border-t rounded-b-lg">
-            <Button type="submit" className="w-full md:w-auto">
-              Salvar Registro
+            <Button 
+              type="submit" 
+              className="w-full md:w-auto"
+              disabled={createOrUpdateRegistration.isPending || isLoading}
+            >
+              {createOrUpdateRegistration.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                "Salvar Registro"
+              )}
             </Button>
           </div>
         </form>

@@ -1,27 +1,50 @@
-import { useState } from "react";
+import { useState, useEffect } from "react"; // Adicionado useEffect, embora não usado diretamente
 import { useQuery } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+// Label é substituído por FormLabel
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Loader2, Fuel, Plus, Edit, Trash } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { FuelStation } from "@shared/schema";
+import { FuelStation as SharedFuelStation } from "@shared/schema"; // Renomeado
 import { offlineStorage } from "@/services/offlineStorage";
+
+// Schema de validação com Zod
+const fuelStationFormSchema = z.object({
+  name: z.string().min(1, "Nome do posto é obrigatório."),
+  address: z.string().optional().or(z.literal('')),
+});
+
+type FuelStationFormValues = z.infer<typeof fuelStationFormSchema>;
+
+// Estender o tipo FuelStation para incluir a propriedade opcional offlinePending (se aplicável no futuro)
+interface FuelStation extends SharedFuelStation {
+  offlinePending?: boolean;
+}
 
 export function CadastroPostos() {
   const { toast } = useToast();
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [currentStation, setCurrentStation] = useState<FuelStation | null>(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    address: ""
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const form = useForm<FuelStationFormValues>({
+    resolver: zodResolver(fuelStationFormSchema),
+    defaultValues: {
+      name: "",
+      address: "",
+    },
   });
 
-  const { data: stations = [], isLoading, refetch } = useQuery({
+  const { data: stations = [], isLoading, refetch } = useQuery<FuelStation[]>({ // Adicionado tipo
     queryKey: ["/api/fuel-stations"],
-    queryFn: async () => {
+    queryFn: async (): Promise<FuelStation[]> => { // Adicionado tipo
       try {
         if (navigator.onLine) {
           const res = await fetch("/api/fuel-stations");
@@ -39,15 +62,10 @@ export function CadastroPostos() {
     }
   });
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const resetForm = () => {
-    setFormData({
+  const resetFormRHF = () => { // Renomeado
+    form.reset({
       name: "",
-      address: ""
+      address: "",
     });
     setFormMode("create");
     setCurrentStation(null);
@@ -55,9 +73,9 @@ export function CadastroPostos() {
 
   const handleEdit = (station: FuelStation) => {
     setCurrentStation(station);
-    setFormData({
+    form.reset({ // Usar form.reset
       name: station.name,
-      address: station.address || ""
+      address: station.address || "",
     });
     setFormMode("edit");
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -65,7 +83,7 @@ export function CadastroPostos() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Tem certeza que deseja excluir este posto?")) return;
-
+    setDeletingId(id);
     try {
       const res = await fetch(`/api/fuel-stations/${id}`, {
         method: 'DELETE',
@@ -87,12 +105,13 @@ export function CadastroPostos() {
         description: "Ocorreu um erro ao excluir o posto.",
         variant: "destructive",
       });
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const onSubmitRHF = async (data: FuelStationFormValues) => { // Renomeado e usando dados do RHF
+    setIsSubmitting(true);
     try {
       let url = '/api/fuel-stations';
       let method = 'POST';
@@ -107,7 +126,7 @@ export function CadastroPostos() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(data), // Usar 'data' do RHF
       });
 
       if (!response.ok) {
@@ -121,7 +140,7 @@ export function CadastroPostos() {
           : "Posto atualizado com sucesso.",
       });
 
-      resetForm();
+      resetFormRHF();
       refetch();
     } catch (error) {
       console.error("Erro:", error);
@@ -130,6 +149,8 @@ export function CadastroPostos() {
         description: "Ocorreu um erro ao salvar o posto.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -146,54 +167,68 @@ export function CadastroPostos() {
             {formMode === "create" ? "Novo Posto" : "Editar Posto"}
           </CardTitle>
           <CardDescription>
-            {formMode === "create" 
-              ? "Cadastre um novo posto de combustível" 
+            {formMode === "create"
+              ? "Cadastre um novo posto de combustível"
               : "Altere os dados do posto selecionado"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome do Posto*</Label>
-                <Input 
-                  id="name"
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmitRHF)} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
                   name="name"
-                  placeholder="Ex: Posto Ipiranga"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nome do Posto*</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: Posto Ipiranga" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="address">Endereço</Label>
-                <Input 
-                  id="address"
+                <FormField
+                  control={form.control}
                   name="address"
-                  placeholder="Ex: Av. Principal, 1000"
-                  value={formData.address}
-                  onChange={handleInputChange}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Endereço</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: Av. Principal, 1000" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
-            </div>
-            
-            <div className="flex justify-end gap-2 pt-4">
-              {formMode === "edit" && (
-                <Button 
-                  type="button" 
-                  variant="outline"
-                  onClick={resetForm}
-                >
-                  Cancelar
-                </Button>
-              )}
-              
-              <Button 
+
+              <div className="flex justify-end gap-2 pt-4">
+                {formMode === "edit" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={resetFormRHF} // Atualizado
+                    disabled={isSubmitting}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+
+                <Button
                 type="submit"
                 className="flex items-center gap-1"
+                disabled={isSubmitting || isLoading}
               >
-                {formMode === "create" ? "Cadastrar Posto" : "Atualizar Posto"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  formMode === "create" ? "Cadastrar Posto" : "Atualizar Posto"
+                )}
               </Button>
             </div>
           </form>
@@ -240,6 +275,7 @@ export function CadastroPostos() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEdit(station)}
+                            disabled={deletingId === station.id || isSubmitting}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -248,8 +284,13 @@ export function CadastroPostos() {
                             size="sm"
                             className="text-red-500 hover:text-red-700"
                             onClick={() => handleDelete(station.id)}
+                            disabled={deletingId === station.id || isSubmitting}
                           >
-                            <Trash className="h-4 w-4" />
+                            {deletingId === station.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>

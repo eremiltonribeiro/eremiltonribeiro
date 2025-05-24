@@ -26,6 +26,7 @@ class SyncManager {
   private mutationObserver: MutationObserver | null = null;
   private syncListeners: Array<(hasPendingOperations: boolean) => void> = [];
   private onlineStatusListeners: Array<(isOnline: boolean) => void> = [];
+  private toastHandler: ((options: { title: string; description?: string; variant?: 'default' | 'destructive' | 'success'; duration?: number }) => void) | null = null;
   
   // Cache para operações pendentes para evitar consultas frequentes ao IndexedDB
   private pendingOperationsCache: PendingOperation[] | null = null;
@@ -145,6 +146,136 @@ class SyncManager {
       this.checkRealOnlineStatus();
     } else {
       this.updateOnlineStatus(false);
+    }
+  }
+
+  // Inicia o gerenciador de sincronização
+  public setToastHandler(handler: (options: { title: string; description?: string; variant?: 'default' | 'destructive' | 'success'; duration?: number }) => void) {
+    this.toastHandler = handler;
+  }
+
+  // Atualiza o status online e notifica listeners
+  private updateOnlineStatus(status: boolean) {
+    if (this.isOnline !== status) {
+      this.isOnline = status;
+      const message = status ? "Conectado à internet." : "Conexão perdida. Operações serão salvas localmente.";
+      console.log(`Status de conexão alterado: ${message}`);
+      if (this.toastHandler) {
+        this.toastHandler({ title: message, variant: status ? 'success' : 'destructive', duration: 3000 });
+      }
+
+      // Notifica listeners
+      this.onlineStatusListeners.forEach(listener => listener(status));
+
+      // Se ficou online, tenta sincronizar
+      if (status) {
+        this.syncPendingOperations();
+      }
+
+      // Atualiza visual para o usuário
+      this.updateOfflineUI(status);
+    }
+  }
+
+  // Método para atualizar a UI com status offline/online
+  private updateOfflineUI(online: boolean, syncStatus?: { state: 'syncing' | 'completed' | 'error_retry' | 'error_critical', message?: string, count?: number }) {
+    // Atualiza a interface para mostrar status
+    const offlineIndicator = document.getElementById('offline-indicator');
+
+    if (!offlineIndicator) {
+      // Cria o indicador se não existir
+      const indicator = document.createElement('div');
+      indicator.id = 'offline-indicator';
+      // Estilos básicos, podem ser melhorados com Tailwind/ShadCN via classes
+      indicator.style.position = 'fixed';
+      indicator.style.bottom = '10px';
+      indicator.style.right = '10px';
+      indicator.style.padding = '8px 16px';
+      indicator.style.borderRadius = '4px';
+      indicator.style.zIndex = '9999';
+      indicator.style.fontWeight = 'bold';
+      indicator.style.transition = 'all 0.3s ease';
+      indicator.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+      document.body.appendChild(indicator);
+    }
+
+    const indicator = document.getElementById('offline-indicator');
+    if (indicator) {
+      if (!online) {
+        indicator.textContent = 'Offline. Alterações salvas localmente.';
+        indicator.style.backgroundColor = '#ef4444'; // Tailwind red-500
+        indicator.style.color = 'white';
+        indicator.style.display = 'block';
+      } else {
+        if (syncStatus) {
+          switch (syncStatus.state) {
+            case 'syncing':
+              indicator.textContent = syncStatus.message || `Sincronizando ${syncStatus.count || ''} operações...`;
+              indicator.style.backgroundColor = '#f59e0b'; // Tailwind amber-500
+              indicator.style.color = 'white';
+              indicator.style.display = 'block';
+              break;
+            case 'completed':
+              indicator.textContent = syncStatus.message || 'Sincronização concluída!';
+              indicator.style.backgroundColor = '#22c55e'; // Tailwind green-500
+              indicator.style.color = 'white';
+              indicator.style.display = 'block';
+              setTimeout(() => {
+                // Esconde após um tempo ou se não houver mais operações
+                this.getPendingOperationsCount().then(count => {
+                  if (count === 0) {
+                    indicator.style.opacity = '0';
+                    setTimeout(() => {
+                      indicator.style.display = 'none';
+                      indicator.style.opacity = '1';
+                    }, 300);
+                  } else {
+                     // Se ainda há operações, volta para o estado de "syncing" ou "pendente"
+                    this.updateOfflineUI(true, { state: 'syncing', count });
+                  }
+                });
+              }, 2000); // Mostra por 2 segundos
+              break;
+            case 'error_retry':
+              indicator.textContent = syncStatus.message || 'Falha na sincronização. Tentando novamente...';
+              indicator.style.backgroundColor = '#f59e0b'; // Tailwind amber-500
+              indicator.style.color = 'white';
+              indicator.style.display = 'block';
+              break;
+            case 'error_critical':
+              indicator.textContent = syncStatus.message || 'Falha crítica na sincronização.';
+              indicator.style.backgroundColor = '#ef4444'; // Tailwind red-500
+              indicator.style.color = 'white';
+              indicator.style.display = 'block';
+              break;
+          }
+        } else {
+           // Online e sem status de sincronização específico (ex: tudo sincronizado)
+          this.getPendingOperationsCount().then(count => {
+            if (count > 0) {
+               this.updateOfflineUI(true, { state: 'syncing', count });
+            } else {
+                // Fade out e depois esconde o indicador se não houver operações
+                indicator.style.opacity = '0';
+                setTimeout(() => {
+                indicator.style.display = 'none';
+                indicator.style.opacity = '1';
+                }, 300);
+            }
+          });
+        }
+      }
+    }
+  }
+
+  // Handler para eventos online/offline
+  private handleOnlineStatus = () => {
+    console.log(`Evento de navegador: ${navigator.onLine ? 'Online' : 'Offline'}`);
+    if (navigator.onLine) {
+      // Verificação adicional da conexão real
+      this.checkRealOnlineStatus();
+    } else {
+      this.updateOnlineStatus(false); // Isso vai chamar updateOfflineUI e toast
     }
   }
 
@@ -459,53 +590,76 @@ class SyncManager {
 
     try {
       this.isSyncing = true;
-      console.log('Iniciando sincronização de operações pendentes...');
+      const initialPendingOps = await this.getPendingOperations();
 
-      // Obtém todas as operações pendentes
-      const pendingOps = await this.getPendingOperations();
-
-      if (pendingOps.length === 0) {
+      if (initialPendingOps.length === 0) {
         console.log('Nenhuma operação pendente para sincronizar');
-        this.isSyncing = false;
-        this.updateOfflineUI(true);
+        this.updateOfflineUI(true, { state: 'completed', message: 'Nenhuma operação pendente.' });
         return;
       }
 
-      console.log(`Encontradas ${pendingOps.length} operações pendentes`);
-      this.updateOfflineUI(true);
-
-      // Processa as operações em ordem de timestamp (mais antigas primeiro)
-      const sortedOperations = pendingOps.sort((a, b) => a.timestamp - b.timestamp);
-      let successCount = 0;
+      console.log(`Iniciando sincronização de ${initialPendingOps.length} operações pendentes...`);
+      if (this.toastHandler) {
+        this.toastHandler({ title: "Sincronização iniciada...", description: `${initialPendingOps.length} operações pendentes.`, variant: 'default' });
+      }
+      this.updateOfflineUI(true, { state: 'syncing', count: initialPendingOps.length });
       
-      // Processa em lotes para melhor performance
+      const sortedOperations = initialPendingOps.sort((a, b) => a.timestamp - b.timestamp);
+      let successfulOpsCount = 0;
+      let failedOpsWillRetryCount = 0;
+      let failedOpsCriticalCount = 0;
+
       const batchSize = 5;
       for (let i = 0; i < sortedOperations.length; i += batchSize) {
         const batch = sortedOperations.slice(i, i + batchSize);
-        await Promise.all(batch.map(op => this.processSingleOperation(op)));
+        const results = await Promise.all(batch.map(op => this.processSingleOperation(op)));
+        results.forEach(result => {
+          if (result.success) successfulOpsCount++;
+          else if (result.willRetry) failedOpsWillRetryCount++;
+          else failedOpsCriticalCount++;
+        });
       }
 
-      // Invalidar o cache de operações pendentes após sincronização
-      this.pendingOperationsCache = null;
+      this.pendingOperationsCache = null; // Invalidar cache
+      const remainingOps = await this.getPendingOperationsCount();
       
-      // Atualiza o contador visual
-      this.updateOfflineUI(true);
+      if (failedOpsCriticalCount > 0) {
+        const message = `Falha crítica ao sincronizar ${failedOpsCriticalCount} operações.`;
+        if (this.toastHandler) this.toastHandler({ title: "Erro de Sincronização", description: message, variant: 'destructive' });
+        this.updateOfflineUI(true, { state: 'error_critical', message });
+      } else if (failedOpsWillRetryCount > 0) {
+        const message = `${failedOpsWillRetryCount} operações falharam e serão tentadas novamente. ${successfulOpsCount} operações sincronizadas.`;
+        if (this.toastHandler) this.toastHandler({ title: "Sincronização Parcial", description: message, variant: 'default' });
+        this.updateOfflineUI(true, { state: 'error_retry', message, count: remainingOps });
+      } else if (successfulOpsCount > 0 && initialPendingOps.length === successfulOpsCount) {
+        const message = `Todas as ${successfulOpsCount} operações foram sincronizadas com sucesso.`;
+        if (this.toastHandler) this.toastHandler({ title: "Sincronização Concluída", description: message, variant: 'success' });
+        this.updateOfflineUI(true, { state: 'completed', message });
+      } else if (remainingOps > 0) {
+         // Caso alguma operação tenha sido adicionada durante a sincronização
+        this.updateOfflineUI(true, { state: 'syncing', count: remainingOps, message: `${successfulOpsCount} operações sincronizadas. Verificando novas...` });
+        this.syncPendingOperations(); // Chama novamente para processar o que restou ou foi adicionado
+        return; // Evita o finally block de setar isSyncing para false prematuramente
+      } else {
+        this.updateOfflineUI(true, { state: 'completed', message: 'Nenhuma operação pendente.' });
+      }
       
-      console.log('Sincronização concluída');
+      console.log(`Sincronização concluída. Sucesso: ${successfulOpsCount}, Falha (tentará novamente): ${failedOpsWillRetryCount}, Falha (crítica): ${failedOpsCriticalCount}`);
+
     } catch (error) {
       console.error('Erro durante sincronização:', error);
+      if (this.toastHandler) this.toastHandler({ title: "Erro Inesperado na Sincronização", description: error.message, variant: 'destructive' });
+       this.updateOfflineUI(true, { state: 'error_critical', message: 'Erro inesperado durante a sincronização.' });
     } finally {
       this.isSyncing = false;
     }
   }
   
   // Processa uma única operação pendente
-  private async processSingleOperation(op: PendingOperation): Promise<boolean> {
+  private async processSingleOperation(op: PendingOperation): Promise<{ success: boolean; willRetry: boolean; criticalError: boolean }> {
     try {
       console.log(`Sincronizando operação: ${op.id} - ${op.method} ${op.url}`);
-
-      // Atualiza status para sincronizando
-      await offlineStorage.updateOperationStatus(op.id, 'syncing');
+      await offlineStorage.updateOperationStatus(op.id, 'processing'); // Mudado de 'syncing' para 'processing'
 
       // Prepara os dados para envio
       let requestOptions: RequestInit = {
@@ -552,39 +706,66 @@ class SyncManager {
       }
 
       // Se chegou aqui, operação concluída com sucesso
+      const responseData = await response.json();
+
+      if (op.method === 'POST') {
+        // Reconciliação de ID para operações de criação
+        // O ID temporário foi gerado em interceptRequest como `temp_${op.id}`
+        // e atribuído a op.payload.id (ou tempBody.id que se tornou op.payload.id)
+        // A resposta do servidor (responseData) contém o ID permanente.
+        const temporaryId = `temp_${op.id}`; // Assumindo que este é o ID temporário salvo
+        console.log(`Reconciliando POST: tempId=${temporaryId}, serverData=`, responseData);
+        await offlineStorage.updateRecordIdAndData(op.entity, temporaryId, responseData);
+      } else if (op.method === 'PUT') {
+        // LWW para operações de atualização
+        // responseData contém o estado mais recente do servidor
+        console.log(`Reconciliando PUT: entity=${op.entity}, serverData=`, responseData);
+        await offlineStorage.saveOfflineDataItem(op.entity, responseData);
+        // Atualizar o cache para refletir a mudança
+        // O refreshCacheForType foi adicionado em offlineStorage, mas saveOfflineDataItem não o chama.
+        // Precisamos garantir que o cache seja atualizado. saveOfflineData o faz.
+        // Vamos chamar explicitamente refreshCacheForType ou garantir que saveOfflineDataItem o faça.
+        // Por agora, vamos assumir que saveOfflineDataItem lida com o cache ou o atualizamos explicitamente.
+        const cachedData = await offlineStorage.getOfflineDataByType(op.entity); // Força a atualização do cache se getOfflineDataByType o fizer
+        const itemIndex = cachedData.findIndex(item => item.id === responseData.id);
+        if (itemIndex > -1) {
+          cachedData[itemIndex] = responseData;
+        } else {
+          cachedData.push(responseData); // Adiciona se não encontrado (embora para PUT devesse existir)
+        }
+        // Re-salvar para atualizar o cache via saveOfflineData
+        await offlineStorage.saveOfflineData(op.entity, cachedData);
+      }
+      // Para DELETE, o item já foi removido localmente em interceptRequest.
+      // A sincronização apenas confirma a operação no servidor.
+
       await offlineStorage.updateOperationStatus(op.id, 'completed');
       
       // Após um tempo, remove a operação completada para não acumular
       setTimeout(() => {
-        offlineStorage.removePendingOperation(op.id);
-        // Invalidar o cache de operações pendentes
-        this.pendingOperationsCache = null;
+        offlineStorage.removePendingOperation(op.id).then(() => {
+          this.pendingOperationsCache = null; // Invalidar cache
+          this.checkPendingOperations(); // Verificar se há mais operações e atualizar UI
+        });
       }, 5000);
 
-      return true;
+      return { success: true, willRetry: false, criticalError: false };
     } catch (error) {
-      console.error(`Erro ao sincronizar operação ${op.id}:`, error);
-      
-      // Incrementa contador de tentativas
+      console.error(`Erro ao sincronizar operação ${op.id}:`, error.message);
       const newRetryCount = op.retryCount + 1;
       
       if (newRetryCount >= this.maxRetries) {
-        // Excedeu o número máximo de tentativas
-        await offlineStorage.updateOperationStatus(
-          op.id, 
-          'error', 
-          `Falha após ${this.maxRetries} tentativas: ${error.message}`
-        );
+        const errorMsg = `Falha após ${this.maxRetries} tentativas: ${error.message}`;
+        await offlineStorage.updateOperationStatus(op.id, 'error', errorMsg);
+        if (this.toastHandler) { // Adicionado toast para falha crítica de uma operação
+            this.toastHandler({ title: `Erro ao sincronizar ${op.entity}`, description: `Operação ${op.type} falhou criticamente.`, variant: 'destructive' });
+        }
+        return { success: false, willRetry: false, criticalError: true };
       } else {
-        // Atualiza contador de tentativas para tentar novamente depois
-        await offlineStorage.updateOperationRetry(
-          op.id, 
-          newRetryCount, 
-          `Tentativa ${newRetryCount}/${this.maxRetries} falhou: ${error.message}`
-        );
+        const errorMsg = `Tentativa ${newRetryCount}/${this.maxRetries} falhou: ${error.message}`;
+        await offlineStorage.updateOperationRetry(op.id, newRetryCount, errorMsg);
+        return { success: false, willRetry: true, criticalError: false };
       }
-      
-      return false;
     }
   }
 

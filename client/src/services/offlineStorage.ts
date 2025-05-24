@@ -287,18 +287,8 @@ class OfflineStorage {
     // Caso contrário, salvar como item único
     await this.saveOfflineDataItem(type, data);
     
-    // Atualizar o cache após salvar
-    const cachedData = this.dataCache.get(type);
-    if (cachedData) {
-      // Atualizar item existente ou adicionar novo
-      const existingIndex = cachedData.data.findIndex(item => item.id === data.id);
-      if (existingIndex >= 0) {
-        cachedData.data[existingIndex] = data;
-      } else {
-        cachedData.data.push(data);
-      }
-      cachedData.timestamp = Date.now();
-    }
+    // Atualizar o cache após salvar, usando o helper para consistência
+    await this.refreshCacheForType(type, (item) => item.id === data.id ? data : item, data);
   }
   
   // Salva um único item de dados
@@ -465,7 +455,109 @@ class OfflineStorage {
   public async getMaintenanceTypes(): Promise<any[]> {
     return this.getOfflineDataByType('maintenance-types');
   }
+
+  /**
+   * Atualiza um registro específico, geralmente após a sincronização de uma criação (POST)
+   * onde um ID temporário é substituído por um ID permanente do servidor.
+   * @param entityType O tipo da entidade (ex: 'registrations', 'vehicles').
+   * @param tempId O ID temporário do registro a ser substituído.
+   * @param newRecord O novo registro completo com o ID permanente do servidor.
+   */
+  public async updateRecordIdAndData(entityType: string, tempId: string | number, newRecord: any): Promise<void> {
+    if (!newRecord.id || newRecord.id === tempId) {
+      console.error("newRecord deve ter um ID permanente diferente do ID temporário.", tempId, newRecord);
+      // Não prosseguir se o novo ID for o mesmo que o temporário ou inválido
+      // Isso pode acontecer se a resposta do servidor não for o esperado.
+      // Poderíamos optar por apenas salvar o newRecord se o tempId não for encontrado.
+      // Ou lançar um erro. Por enquanto, vamos apenas logar e não fazer a remoção.
+      // E tentar salvar o newRecord (que pode atualizar o item se o ID já existir de alguma forma)
+      await this.saveOfflineDataItem(entityType, newRecord);
+      // Atualizar o cache
+      await this.refreshCacheForType(entityType, (currentItem) => currentItem.id === tempId ? newRecord : currentItem.id === newRecord.id ? newRecord : currentItem);
+      return;
+    }
+
+    const db = await this.ensureDbReady();
+    const tempRecordId = `${entityType}_${tempId}`; // _id do registro temporário
+
+    console.log(`Atualizando ID: de ${tempId} para ${newRecord.id} em ${entityType}`);
+
+    return new Promise(async (resolve, reject) => {
+      const transaction = db.transaction(['offlineData'], 'readwrite');
+      const store = transaction.objectStore('offlineData');
+
+      // 1. Remover o registro antigo com ID temporário
+      const deleteRequest = store.delete(tempRecordId);
+
+      deleteRequest.onsuccess = async () => {
+        console.log(`Registro temporário ${tempRecordId} removido.`);
+        // 2. Adicionar o novo registro com ID permanente
+        // Reutilizando saveOfflineDataItem para consistência, mas ele gera _id internamente.
+        // Precisamos garantir que ele use newRecord.id para gerar o _id.
+        try {
+          await this.saveOfflineDataItem(entityType, newRecord); // saveOfflineDataItem vai criar o _id correto
+          
+          // 3. Atualizar o cache
+          // Remover o item com tempId e adicionar/atualizar o newRecord
+          await this.refreshCacheForType(entityType, (currentItem) => {
+            if (currentItem.id === tempId) return null; // Marcar para remoção
+            if (currentItem.id === newRecord.id) return newRecord; // Atualizar se já existir com o novo ID
+            return currentItem; // Manter outros itens
+          }, newRecord); // Adicionar newRecord se não substituiu nada
+
+          resolve();
+        } catch (saveError) {
+          console.error(`Erro ao salvar novo registro ${newRecord.id} após remover ${tempId}:`, saveError);
+          reject(saveError);
+        }
+      };
+
+      deleteRequest.onerror = (event) => {
+        console.error(`Erro ao remover registro temporário ${tempRecordId}:`, (event.target as IDBRequest).error);
+        // Mesmo se a remoção falhar (ex: item não encontrado), tentar salvar o novo
+        // Isso pode ser útil se o item temporário nunca foi realmente salvo ou já foi limpo.
+        this.saveOfflineDataItem(entityType, newRecord)
+          .then(async () => {
+            await this.refreshCacheForType(entityType, (currentItem) => currentItem.id === newRecord.id ? newRecord : currentItem, newRecord);
+            resolve(); // Resolve porque o objetivo principal (ter o dado do servidor) foi alcançado.
+          })
+          .catch(reject);
+      };
+    });
+  }
   
+  // Helper para atualizar o cache de forma mais granular
+  private async refreshCacheForType(type: string, updateLogic: (item: any) => any | null, itemToAdd?: any) {
+    const cached = this.dataCache.get(type);
+    if (cached) {
+      let itemExists = false;
+      const updatedData = cached.data.map(item => {
+        const result = updateLogic(item);
+        if (result && result.id === (itemToAdd ? itemToAdd.id : undefined)) itemExists = true;
+        return result;
+      }).filter(item => item !== null); // Remove itens marcados como null
+
+      if (itemToAdd && !itemExists) {
+         // Se o item a ser adicionado (newRecord) não substituiu um item existente pelo ID,
+         // e também não foi encontrado para ser atualizado pelo seu próprio ID (no caso de tempId não existir),
+         // então o adicionamos diretamente.
+        const isAlreadyPresent = updatedData.some(d => d.id === itemToAdd.id);
+        if(!isAlreadyPresent) {
+            updatedData.push(itemToAdd);
+        }
+      }
+      
+      this.dataCache.set(type, { data: updatedData, timestamp: Date.now() });
+    } else {
+      // Se não há cache, buscar do DB para popular
+      // Isso pode ser desnecessário se a próxima leitura for popular o cache de qualquer maneira.
+      // Por simplicidade, podemos apenas adicionar o item se o cache estiver vazio.
+      if (itemToAdd) {
+        this.dataCache.set(type, { data: [itemToAdd], timestamp: Date.now() });
+      }
+    }
+  }
+
   // Salva um arquivo offline
   public async saveOfflineFile(entityId: string, file: File): Promise<string> {
     const db = await this.ensureDbReady();

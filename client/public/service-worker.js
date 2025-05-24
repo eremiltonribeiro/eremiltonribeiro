@@ -242,36 +242,34 @@ self.addEventListener('sync', event => {
 });
 
 // Periodicamente, verificar conexão e tentar sincronizar
+// Este setInterval já envia CHECK_SYNC, que pode acionar a lógica de sync no cliente.
+// O evento 'sync' abaixo é mais robusto para quando o navegador detecta conectividade.
 setInterval(() => {
   if (navigator.onLine) {
-    console.log('[Service Worker] Verificação periódica de sincronização');
+    console.log('[Service Worker] Verificação periódica de sincronização (CHECK_SYNC)');
     self.clients.matchAll().then(clients => {
       if (clients.length > 0) {
-        clients[0].postMessage({
-          type: 'CHECK_SYNC'
+        // Envia para o primeiro cliente encontrado. Idealmente, todos os clientes ativos deveriam ser notificados
+        // ou a lógica de sincronização deveria ser gerenciada centralmente pelo SW se ele pudesse fazer mais.
+        clients.forEach(client => { // Notificar todos os clientes
+            client.postMessage({
+              type: 'CHECK_SYNC' // O cliente pode usar isso para verificar se precisa iniciar uma sincronização
+            });
         });
       }
     });
   }
 }, 60000); // Verificar a cada minuto
 
-// Adicionar evento de sincronização para o navegador
-self.addEventListener('sync', function(event) {
-  if (event.tag === 'sync-pending-operations') {
-    console.log('[Service Worker] Sincronizando operações pendentes via background sync');
-    event.waitUntil(
-      self.clients.matchAll().then(clients => {
-        clients.forEach(client => {
-          client.postMessage({
-            type: 'START_SYNC'
-          });
-        });
-      })
-    );
-  }
-});CK_SYNC'
-        });
-      }
-    });
-  }
-}, 300000); // A cada 5 minutos
+// O evento 'sync' é o principal gatilho para a sincronização em background
+// quando o navegador detecta que a conexão foi restaurada.
+// self.addEventListener('sync', event => { // Comentado pois já existe um manipulador acima
+//   if (event.tag === 'sync-pending-operations') {
+//     console.log('[Service Worker] Sincronizando operações pendentes via background sync (já manipulado)');
+//     // A lógica já está no primeiro listener 'sync'.
+//     // Esta duplicata pode ser removida.
+//   }
+// });
+
+// O bloco final com CK_SYNC e 300000ms parece ser um erro de digitação ou um fragmento de código.
+// Removendo-o para evitar erros ou comportamento inesperado.

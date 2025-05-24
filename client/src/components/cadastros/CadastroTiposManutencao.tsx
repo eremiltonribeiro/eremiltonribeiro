@@ -1,26 +1,48 @@
-import { useState } from "react";
+import { useState, useEffect } from "react"; // Adicionado useEffect, embora não usado diretamente
 import { useQuery } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+// Label é substituído por FormLabel
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Loader2, Wrench, Plus, Edit, Trash } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { MaintenanceType } from "@shared/schema";
+import { MaintenanceType as SharedMaintenanceType } from "@shared/schema"; // Renomeado
 import { offlineStorage } from "@/services/offlineStorage";
+
+// Schema de validação com Zod
+const maintenanceTypeFormSchema = z.object({
+  name: z.string().min(1, "Nome do tipo de manutenção é obrigatório."),
+});
+
+type MaintenanceTypeFormValues = z.infer<typeof maintenanceTypeFormSchema>;
+
+// Estender o tipo MaintenanceType para incluir a propriedade opcional offlinePending (se aplicável no futuro)
+interface MaintenanceType extends SharedMaintenanceType {
+  offlinePending?: boolean;
+}
 
 export function CadastroTiposManutencao() {
   const { toast } = useToast();
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
   const [currentType, setCurrentType] = useState<MaintenanceType | null>(null);
-  const [formData, setFormData] = useState({
-    name: ""
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const form = useForm<MaintenanceTypeFormValues>({
+    resolver: zodResolver(maintenanceTypeFormSchema),
+    defaultValues: {
+      name: "",
+    },
   });
 
-  const { data: types = [], isLoading, refetch } = useQuery({
+  const { data: types = [], isLoading, refetch } = useQuery<MaintenanceType[]>({ // Adicionado tipo
     queryKey: ["/api/maintenance-types"],
-    queryFn: async () => {
+    queryFn: async (): Promise<MaintenanceType[]> => { // Adicionado tipo
       try {
         if (navigator.onLine) {
           const res = await fetch("/api/maintenance-types");
@@ -38,14 +60,9 @@ export function CadastroTiposManutencao() {
     }
   });
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const resetForm = () => {
-    setFormData({
-      name: ""
+  const resetFormRHF = () => { // Renomeado
+    form.reset({
+      name: "",
     });
     setFormMode("create");
     setCurrentType(null);
@@ -53,8 +70,8 @@ export function CadastroTiposManutencao() {
 
   const handleEdit = (type: MaintenanceType) => {
     setCurrentType(type);
-    setFormData({
-      name: type.name
+    form.reset({ // Usar form.reset
+      name: type.name,
     });
     setFormMode("edit");
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -62,7 +79,7 @@ export function CadastroTiposManutencao() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("Tem certeza que deseja excluir este tipo de manutenção?")) return;
-
+    setDeletingId(id);
     try {
       const res = await fetch(`/api/maintenance-types/${id}`, {
         method: 'DELETE',
@@ -84,21 +101,14 @@ export function CadastroTiposManutencao() {
         description: "Ocorreu um erro ao excluir o tipo de manutenção.",
         variant: "destructive",
       });
+    } finally {
+      setDeletingId(null);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!formData.name.trim()) {
-      toast({
-        title: "Erro!",
-        description: "O nome do tipo de manutenção é obrigatório.",
-        variant: "destructive",
-      });
-      return;
-    }
-    
+  const onSubmitRHF = async (data: MaintenanceTypeFormValues) => { // Renomeado e usando dados do RHF
+    // A validação de nome em branco é tratada pelo Zod schema
+    setIsSubmitting(true);
     try {
       let url = '/api/maintenance-types';
       let method = 'POST';
@@ -113,7 +123,7 @@ export function CadastroTiposManutencao() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(data), // Usar 'data' do RHF
       });
 
       if (!response.ok) {
@@ -128,7 +138,7 @@ export function CadastroTiposManutencao() {
           : "Tipo de manutenção atualizado com sucesso.",
       });
 
-      resetForm();
+      resetFormRHF();
       refetch();
     } catch (error: any) {
       console.error("Erro:", error);
@@ -137,6 +147,8 @@ export function CadastroTiposManutencao() {
         description: error.message || "Ocorreu um erro ao salvar o tipo de manutenção.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -153,41 +165,52 @@ export function CadastroTiposManutencao() {
             {formMode === "create" ? "Novo Tipo de Manutenção" : "Editar Tipo de Manutenção"}
           </CardTitle>
           <CardDescription>
-            {formMode === "create" 
-              ? "Cadastre um novo tipo de manutenção" 
+            {formMode === "create"
+              ? "Cadastre um novo tipo de manutenção"
               : "Altere os dados do tipo de manutenção selecionado"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nome do Tipo de Manutenção*</Label>
-              <Input 
-                id="name"
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmitRHF)} className="space-y-4">
+              <FormField
+                control={form.control}
                 name="name"
-                placeholder="Ex: Troca de Óleo"
-                value={formData.name}
-                onChange={handleInputChange}
-                required
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome do Tipo de Manutenção*</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: Troca de Óleo" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
               />
-            </div>
-            
-            <div className="flex justify-end gap-2 pt-4">
-              {formMode === "edit" && (
-                <Button 
-                  type="button" 
-                  variant="outline"
-                  onClick={resetForm}
-                >
-                  Cancelar
-                </Button>
-              )}
-              
-              <Button 
+              <div className="flex justify-end gap-2 pt-4">
+                {formMode === "edit" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={resetFormRHF} // Atualizado
+                    disabled={isSubmitting}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+
+                <Button
                 type="submit"
                 className="flex items-center gap-1"
+                disabled={isSubmitting || isLoading}
               >
-                {formMode === "create" ? "Cadastrar Tipo" : "Atualizar Tipo"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  formMode === "create" ? "Cadastrar Tipo" : "Atualizar Tipo"
+                )}
               </Button>
             </div>
           </form>
@@ -232,6 +255,7 @@ export function CadastroTiposManutencao() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleEdit(type)}
+                            disabled={deletingId === type.id || isSubmitting}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -240,8 +264,13 @@ export function CadastroTiposManutencao() {
                             size="sm"
                             className="text-red-500 hover:text-red-700"
                             onClick={() => handleDelete(type.id)}
+                            disabled={deletingId === type.id || isSubmitting}
                           >
-                            <Trash className="h-4 w-4" />
+                            {deletingId === type.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>

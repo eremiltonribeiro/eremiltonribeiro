@@ -4,31 +4,66 @@
  * Este componente permite cadastrar, editar, visualizar e excluir veículos,
  * com suporte a operações offline através do armazenamento local.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+// Label é substituído por FormLabel de react-hook-form
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { FileInput } from "@/components/ui/file-input"; // Importar FileInput
 import { Loader2, Car, Plus, Edit, Trash } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Vehicle } from "@shared/schema";
+import { Vehicle as SharedVehicle } from "@shared/schema"; // Renomeado para evitar conflito
 import { offlineStorage } from "@/services/offlineStorage";
+
+// Schema de validação com Zod
+const vehicleFormSchema = z.object({
+  name: z.string().min(1, "Nome do veículo é obrigatório."),
+  plate: z.string().min(1, "Placa é obrigatória.")
+    .regex(/^[A-Z]{3}-?[0-9][A-Z0-9][0-9]{2}$/i, "Formato de placa inválido (ex: ABC-1234 ou ABC1D23). Use letras maiúsculas."),
+  model: z.string().optional(),
+  year: z.preprocess(
+    (val) => (String(val).trim() === "" ? undefined : Number(val)),
+    z.number({ invalid_type_error: "Ano deve ser um número."})
+      .int("O ano deve ser um número inteiro.")
+      .min(1900, "Ano mínimo é 1900.")
+      .max(new Date().getFullYear() + 1, `Ano máximo é ${new Date().getFullYear() + 1}.`)
+      .optional()
+  ),
+  // imageUrl agora aceita qualquer string (incluindo data URLs) ou string vazia.
+  // A validação de ser uma "URL válida" pode ser muito restritiva para data URLs.
+  imageUrl: z.string().optional().or(z.literal('')), 
+});
+
+type VehicleFormValues = z.infer<typeof vehicleFormSchema>;
+
+// Estender o tipo Vehicle para incluir a propriedade opcional offlinePending
+interface Vehicle extends SharedVehicle {
+  offlinePending?: boolean;
+}
+
 
 export function CadastroVeiculos() {
   const { toast } = useToast();
-  // Estado para controlar se estamos criando ou editando um veículo
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
-  // Estado para armazenar o veículo atual sendo editado
   const [currentVehicle, setCurrentVehicle] = useState<Vehicle | null>(null);
-  // Estado para os dados do formulário
-  const [formData, setFormData] = useState({
-    name: "",
-    plate: "",
-    model: "",
-    year: "",
-    imageUrl: ""
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const form = useForm<VehicleFormValues>({
+    resolver: zodResolver(vehicleFormSchema),
+    defaultValues: {
+      name: "",
+      plate: "",
+      model: "",
+      year: undefined,
+      imageUrl: "",
+    },
   });
 
   /**
@@ -36,47 +71,36 @@ export function CadastroVeiculos() {
    * Tenta buscar do servidor primeiro, se estiver online
    * Caso contrário, ou em caso de erro, busca do armazenamento local
    */
-  const { data: vehicles = [], isLoading, refetch } = useQuery({
+  const { data: vehicles = [], isLoading, refetch } = useQuery<Vehicle[]>({ // Adicionado tipo aqui
     queryKey: ["/api/vehicles"],
-    queryFn: async () => {
+    queryFn: async (): Promise<Vehicle[]> => { // Adicionado tipo de retorno aqui
       try {
         if (navigator.onLine) {
           const res = await fetch("/api/vehicles");
           if (res.ok) {
             const data = await res.json();
-            // Salva os dados no armazenamento local para acesso offline
             await offlineStorage.saveVehicles(data);
             return data;
           }
         }
-        // Fallback para dados offline
         return await offlineStorage.getVehicles();
       } catch (error) {
         console.error("Erro ao buscar veículos:", error);
-        // Em caso de erro, usa dados do armazenamento local
         return await offlineStorage.getVehicles();
       }
     }
   });
 
   /**
-   * Manipula mudanças nos campos do formulário
-   */
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  /**
    * Reseta o formulário para o estado inicial
    */
-  const resetForm = () => {
-    setFormData({
+  const resetFormRHF = () => { // Renomeado para evitar conflito e usar RHF
+    form.reset({
       name: "",
       plate: "",
       model: "",
-      year: "",
-      imageUrl: ""
+      year: undefined,
+      imageUrl: "",
     });
     setFormMode("create");
     setCurrentVehicle(null);
@@ -87,15 +111,14 @@ export function CadastroVeiculos() {
    */
   const handleEdit = (vehicle: Vehicle) => {
     setCurrentVehicle(vehicle);
-    setFormData({
+    form.reset({
       name: vehicle.name,
       plate: vehicle.plate,
       model: vehicle.model || "",
-      year: vehicle.year ? String(vehicle.year) : "",
-      imageUrl: vehicle.imageUrl || ""
+      year: vehicle.year ? Number(vehicle.year) : undefined,
+      imageUrl: vehicle.imageUrl || "",
     });
     setFormMode("edit");
-    // Rola a página para o topo para mostrar o formulário
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -104,7 +127,7 @@ export function CadastroVeiculos() {
    */
   const handleDelete = async (id: number) => {
     if (!confirm("Tem certeza que deseja excluir este veículo?")) return;
-
+    setDeletingId(id);
     try {
       const res = await fetch(`/api/vehicles/${id}`, {
         method: 'DELETE',
@@ -116,8 +139,7 @@ export function CadastroVeiculos() {
           description: "Veículo excluído com sucesso.",
           variant: "success"
         });
-        // Atualiza a lista após exclusão
-        refetch();
+        refetch(); // Atualiza a lista após exclusão
       } else {
         throw new Error("Erro ao excluir veículo");
       }
@@ -128,23 +150,25 @@ export function CadastroVeiculos() {
         description: "Ocorreu um erro ao excluir o veículo.",
         variant: "destructive",
       });
+    } finally {
+      setDeletingId(null);
     }
   };
 
   /**
    * Processa o envio do formulário para criar ou atualizar um veículo
    */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const onSubmitRHF = async (data: VehicleFormValues) => { // Renomeado e usando dados do RHF
+    setIsSubmitting(true);
     try {
-      // Prepara os dados, convertendo o ano para número quando presente
+      // Os dados já estão validados e tipados por Zod e RHF
+      // A conversão de 'year' para número (ou undefined) é feita pelo Zod preprocess
       const vehicleData = {
-        ...formData,
-        year: formData.year ? parseInt(formData.year) : undefined
+        ...data,
+        // Garante que plate seja maiúscula antes de enviar, se necessário pela API
+        plate: data.plate.toUpperCase(), 
       };
 
-      // Define URL e método com base no modo do formulário
       let url = '/api/vehicles';
       let method = 'POST';
       
@@ -176,7 +200,7 @@ export function CadastroVeiculos() {
       });
 
       // Limpa o formulário e atualiza a lista
-      resetForm();
+      resetFormRHF();
       refetch();
     } catch (error) {
       console.error("Erro:", error);
@@ -185,6 +209,8 @@ export function CadastroVeiculos() {
         description: "Ocorreu um erro ao salvar o veículo.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -203,94 +229,132 @@ export function CadastroVeiculos() {
             {formMode === "create" ? "Novo Veículo" : "Editar Veículo"}
           </CardTitle>
           <CardDescription>
-            {formMode === "create" 
-              ? "Cadastre um novo veículo no sistema" 
+            {formMode === "create"
+              ? "Cadastre um novo veículo no sistema"
               : "Altere os dados do veículo selecionado"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome do Veículo*</Label>
-                <Input 
-                  id="name"
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmitRHF)} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
                   name="name"
-                  placeholder="Ex: Ford Ranger"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                  aria-required="true"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nome do Veículo*</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: Ford Ranger" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="plate">Placa*</Label>
-                <Input 
-                  id="plate"
+                <FormField
+                  control={form.control}
                   name="plate"
-                  placeholder="Ex: ABC-1234"
-                  value={formData.plate}
-                  onChange={handleInputChange}
-                  required
-                  aria-required="true"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Placa*</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: ABC-1234 ou ABC1D23" {...field} style={{ textTransform: 'uppercase' }} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="model">Modelo</Label>
-                <Input 
-                  id="model"
+                <FormField
+                  control={form.control}
                   name="model"
-                  placeholder="Ex: XLT 4x4"
-                  value={formData.model}
-                  onChange={handleInputChange}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Modelo</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: XLT 4x4" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="year">Ano</Label>
-                <Input 
-                  id="year"
+                <FormField
+                  control={form.control}
                   name="year"
-                  type="number"
-                  placeholder="Ex: 2023"
-                  value={formData.year}
-                  onChange={handleInputChange}
-                  min="1900"
-                  max={new Date().getFullYear() + 1}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Ano</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="Ex: 2023" {...field} onChange={e => field.onChange(e.target.value === '' ? undefined : e.target.valueAsNumber)} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              
-              <div className="space-y-2 md:col-span-2">
-                <Label htmlFor="imageUrl">URL da Imagem</Label>
-                <Input 
-                  id="imageUrl"
+                <FormField
+                  control={form.control}
                   name="imageUrl"
-                  placeholder="URL da imagem do veículo"
-                  value={formData.imageUrl}
-                  onChange={handleInputChange}
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel>Imagem do Veículo</FormLabel>
+                      <FormControl>
+                        <FileInput
+                          accept={["image/jpeg", "image/png", "image/gif"]}
+                          defaultPreview={field.value || ""}
+                          onFileChange={(file) => {
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                field.onChange(reader.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            } else {
+                              // Se o FileInput permitir limpar a seleção,
+                              // o valor de field.value já deve ter sido limpo pelo FileInput
+                              // ou podemos explicitamente chamar field.onChange("") se necessário.
+                              // O FileInput atual não parece ter um botão "limpar" explícito,
+                              // mas selecionar um novo arquivo substituirá o antigo.
+                              // Se o usuário não selecionar nada, o valor antigo persiste
+                              // (se houver um) ou fica vazio.
+                              // Para garantir que um "desselecionar" (se possível) limpe o campo:
+                              if (field.value && !file) { // se havia valor mas agora não há file
+                                field.onChange("");
+                              }
+                            }
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
-            </div>
-            
-            <div className="flex justify-end gap-2 pt-4">
-              {formMode === "edit" && (
-                <Button 
-                  type="button" 
-                  variant="outline"
-                  onClick={resetForm}
-                >
-                  Cancelar
-                </Button>
-              )}
-              
-              <Button 
+
+              <div className="flex justify-end gap-2 pt-4">
+                {formMode === "edit" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={resetFormRHF} // Atualizado
+                    disabled={isSubmitting}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+
+                <Button
                 type="submit"
                 variant={formMode === "create" ? "default" : "success"}
                 className="flex items-center gap-1"
+                disabled={isSubmitting || isLoading}
               >
-                {formMode === "create" ? "Cadastrar Veículo" : "Atualizar Veículo"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  formMode === "create" ? "Cadastrar Veículo" : "Atualizar Veículo"
+                )}
               </Button>
             </div>
           </form>
@@ -345,6 +409,7 @@ export function CadastroVeiculos() {
                             size="sm"
                             onClick={() => handleEdit(vehicle)}
                             aria-label={`Editar ${vehicle.name}`}
+                            disabled={deletingId === vehicle.id || isSubmitting} // Adicionado isSubmitting aqui
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -354,8 +419,13 @@ export function CadastroVeiculos() {
                             className="text-error hover:text-error/90"
                             onClick={() => handleDelete(vehicle.id)}
                             aria-label={`Excluir ${vehicle.name}`}
+                            disabled={deletingId === vehicle.id || isSubmitting} // Adicionado isSubmitting aqui
                           >
-                            <Trash className="h-4 w-4" />
+                            {deletingId === vehicle.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>
