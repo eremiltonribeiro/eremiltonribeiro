@@ -33,10 +33,12 @@ export default function ChecklistTemplates() {
   const [isItemDialogOpen, setIsItemDialogOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateDescription, setTemplateDescription] = useState("");
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false); // Estado de loading para template
   const [itemDescription, setItemDescription] = useState("");
   const [itemCategory, setItemCategory] = useState("geral");
   const [itemRequired, setItemRequired] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ChecklistItem | null>(null);
+  const [isSavingItem, setIsSavingItem] = useState(false); // Estado de loading para item
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -178,7 +180,7 @@ export default function ChecklistTemplates() {
   // Salvar template
   const handleSaveTemplate = async () => {
     if (!validateTemplateForm()) return;
-    
+    setIsSavingTemplate(true);
     try {
       if (selectedTemplate) {
         // Edição de template existente
@@ -257,15 +259,16 @@ export default function ChecklistTemplates() {
         description: "Não foi possível salvar o template. Tente novamente.",
         variant: "destructive",
       });
+    } finally {
+      setIsSavingTemplate(false);
+      setIsDialogOpen(false); // Fechar o diálogo mesmo em caso de erro, ou manter aberto? Decidi fechar.
     }
-    
-    setIsDialogOpen(false);
   };
 
   // Salvar item
   const handleSaveItem = async () => {
     if (!validateItemForm() || !selectedTemplate) return;
-    
+    setIsSavingItem(true);
     try {
       if (selectedItem) {
         // Edição de item existente
@@ -371,9 +374,10 @@ export default function ChecklistTemplates() {
         description: "Não foi possível salvar o item. Tente novamente.",
         variant: "destructive",
       });
+    } finally {
+      setIsSavingItem(false);
+      setIsItemDialogOpen(false); // Fechar o diálogo
     }
-    
-    setIsItemDialogOpen(false);
   };
 
   // Excluir template
@@ -628,14 +632,20 @@ export default function ChecklistTemplates() {
             <Button
               variant="outline"
               onClick={() => setIsDialogOpen(false)}
+              disabled={isSavingTemplate}
             >
               Cancelar
             </Button>
             <Button
               onClick={handleSaveTemplate}
               className="bg-blue-700 hover:bg-blue-800"
+              disabled={isSavingTemplate}
             >
-              {selectedTemplate ? "Atualizar" : "Criar"}
+              {isSavingTemplate ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+              ) : (
+                selectedTemplate ? "Atualizar" : "Criar"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -706,14 +716,20 @@ export default function ChecklistTemplates() {
             <Button
               variant="outline"
               onClick={() => setIsItemDialogOpen(false)}
+              disabled={isSavingItem}
             >
               Cancelar
             </Button>
             <Button
               onClick={handleSaveItem}
               className="bg-blue-700 hover:bg-blue-800"
+              disabled={isSavingItem}
             >
-              {selectedItem ? "Atualizar" : "Adicionar"}
+              {isSavingItem ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+              ) : (
+                selectedItem ? "Atualizar" : "Adicionar"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -4,30 +4,53 @@
  * Este componente permite cadastrar, editar, visualizar e excluir motoristas,
  * com suporte a operações offline através do armazenamento local.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react"; // Adicionado useEffect, embora não usado diretamente na refatoração do form
 import { useQuery } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+// Label é substituído por FormLabel
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { FileInput } from "@/components/ui/file-input"; // Importar FileInput
 import { Loader2, UserCircle, Plus, Edit, Trash } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { Driver } from "@shared/schema";
+import { Driver as SharedDriver } from "@shared/schema"; // Renomeado para evitar conflito
 import { offlineStorage } from "@/services/offlineStorage";
+
+// Schema de validação com Zod
+const driverFormSchema = z.object({
+  name: z.string().min(1, "Nome do motorista é obrigatório."),
+  license: z.string().max(20, "CNH deve ter no máximo 20 caracteres.").optional().or(z.literal('')),
+  phone: z.string().max(20, "Telefone deve ter no máximo 20 caracteres.").optional().or(z.literal('')),
+  imageUrl: z.string().optional().or(z.literal('')), // Ajustado para aceitar data URLs
+});
+
+type DriverFormValues = z.infer<typeof driverFormSchema>;
+
+// Estender o tipo Driver para incluir a propriedade opcional offlinePending (se aplicável no futuro)
+interface Driver extends SharedDriver {
+  offlinePending?: boolean;
+}
 
 export function CadastroMotoristas() {
   const { toast } = useToast();
-  // Estado para controlar se estamos criando ou editando um motorista
   const [formMode, setFormMode] = useState<"create" | "edit">("create");
-  // Estado para armazenar o motorista atual sendo editado
   const [currentDriver, setCurrentDriver] = useState<Driver | null>(null);
-  // Estado para os dados do formulário
-  const [formData, setFormData] = useState({
-    name: "",
-    license: "",
-    phone: "",
-    imageUrl: ""
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const form = useForm<DriverFormValues>({
+    resolver: zodResolver(driverFormSchema),
+    defaultValues: {
+      name: "",
+      license: "",
+      phone: "",
+      imageUrl: "",
+    },
   });
 
   /**
@@ -35,46 +58,35 @@ export function CadastroMotoristas() {
    * Tenta buscar do servidor primeiro, se estiver online
    * Caso contrário, ou em caso de erro, busca do armazenamento local
    */
-  const { data: drivers = [], isLoading, refetch } = useQuery({
+  const { data: drivers = [], isLoading, refetch } = useQuery<Driver[]>({ // Adicionado tipo
     queryKey: ["/api/drivers"],
-    queryFn: async () => {
+    queryFn: async (): Promise<Driver[]> => { // Adicionado tipo
       try {
         if (navigator.onLine) {
           const res = await fetch("/api/drivers");
           if (res.ok) {
             const data = await res.json();
-            // Salva os dados no armazenamento local para acesso offline
             await offlineStorage.saveDrivers(data);
             return data;
           }
         }
-        // Fallback para dados offline
         return await offlineStorage.getDrivers();
       } catch (error) {
         console.error("Erro ao buscar motoristas:", error);
-        // Em caso de erro, usa dados do armazenamento local
         return await offlineStorage.getDrivers();
       }
     }
   });
 
   /**
-   * Manipula mudanças nos campos do formulário
-   */
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  /**
    * Reseta o formulário para o estado inicial
    */
-  const resetForm = () => {
-    setFormData({
+  const resetFormRHF = () => { // Renomeado
+    form.reset({
       name: "",
       license: "",
       phone: "",
-      imageUrl: ""
+      imageUrl: "",
     });
     setFormMode("create");
     setCurrentDriver(null);
@@ -85,14 +97,13 @@ export function CadastroMotoristas() {
    */
   const handleEdit = (driver: Driver) => {
     setCurrentDriver(driver);
-    setFormData({
+    form.reset({ // Usar form.reset para popular o formulário
       name: driver.name,
       license: driver.license || "",
       phone: driver.phone || "",
-      imageUrl: driver.imageUrl || ""
+      imageUrl: driver.imageUrl || "",
     });
     setFormMode("edit");
-    // Rola a página para o topo para mostrar o formulário
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -101,7 +112,7 @@ export function CadastroMotoristas() {
    */
   const handleDelete = async (id: number) => {
     if (!confirm("Tem certeza que deseja excluir este motorista?")) return;
-
+    setDeletingId(id);
     try {
       const res = await fetch(`/api/drivers/${id}`, {
         method: 'DELETE',
@@ -113,8 +124,7 @@ export function CadastroMotoristas() {
           description: "Motorista excluído com sucesso.",
           variant: "success"
         });
-        // Atualiza a lista após exclusão
-        refetch();
+        refetch(); // Atualiza a lista após exclusão
       } else {
         throw new Error("Erro ao excluir motorista");
       }
@@ -125,17 +135,17 @@ export function CadastroMotoristas() {
         description: "Ocorreu um erro ao excluir o motorista.",
         variant: "destructive",
       });
+    } finally {
+      setDeletingId(null);
     }
   };
 
   /**
    * Processa o envio do formulário para criar ou atualizar um motorista
    */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const onSubmitRHF = async (data: DriverFormValues) => { // Renomeado e usando dados do RHF
+    setIsSubmitting(true);
     try {
-      // Define URL e método com base no modo do formulário
       let url = '/api/drivers';
       let method = 'POST';
       
@@ -150,7 +160,7 @@ export function CadastroMotoristas() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(data), // Usar 'data' do RHF
       });
 
       if (!response.ok) {
@@ -167,7 +177,7 @@ export function CadastroMotoristas() {
       });
 
       // Limpa o formulário e atualiza a lista
-      resetForm();
+      resetFormRHF();
       refetch();
     } catch (error) {
       console.error("Erro:", error);
@@ -176,6 +186,8 @@ export function CadastroMotoristas() {
         description: "Ocorreu um erro ao salvar o motorista.",
         variant: "destructive",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -194,79 +206,111 @@ export function CadastroMotoristas() {
             {formMode === "create" ? "Novo Motorista" : "Editar Motorista"}
           </CardTitle>
           <CardDescription>
-            {formMode === "create" 
-              ? "Cadastre um novo motorista no sistema" 
+            {formMode === "create"
+              ? "Cadastre um novo motorista no sistema"
               : "Altere os dados do motorista selecionado"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome do Motorista*</Label>
-                <Input 
-                  id="name"
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmitRHF)} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
                   name="name"
-                  placeholder="Ex: João Silva"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  required
-                  aria-required="true"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Nome do Motorista*</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: João Silva" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="license">CNH</Label>
-                <Input 
-                  id="license"
+                <FormField
+                  control={form.control}
                   name="license"
-                  placeholder="Ex: 12345678901"
-                  value={formData.license}
-                  onChange={handleInputChange}
-                  maxLength={11}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>CNH</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: 12345678901" {...field} maxLength={20} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="phone">Telefone</Label>
-                <Input 
-                  id="phone"
+                <FormField
+                  control={form.control}
                   name="phone"
-                  placeholder="Ex: (11) 99999-9999"
-                  value={formData.phone}
-                  onChange={handleInputChange}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Telefone</FormLabel>
+                      <FormControl>
+                        <Input placeholder="Ex: (11) 99999-9999" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="imageUrl">URL da Imagem</Label>
-                <Input 
-                  id="imageUrl"
+                <FormField
+                  control={form.control}
                   name="imageUrl"
-                  placeholder="URL da foto do motorista"
-                  value={formData.imageUrl}
-                  onChange={handleInputChange}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Imagem do Motorista</FormLabel>
+                      <FormControl>
+                        <FileInput
+                          accept={["image/jpeg", "image/png", "image/gif"]}
+                          defaultPreview={field.value || ""}
+                          onFileChange={(file) => {
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                field.onChange(reader.result as string);
+                              };
+                              reader.readAsDataURL(file);
+                            } else {
+                              if (field.value && !file) {
+                                field.onChange("");
+                              }
+                            }
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
               </div>
-            </div>
-            
-            <div className="flex justify-end gap-2 pt-4">
-              {formMode === "edit" && (
-                <Button 
-                  type="button" 
-                  variant="outline"
-                  onClick={resetForm}
-                >
-                  Cancelar
-                </Button>
-              )}
-              
-              <Button 
+
+              <div className="flex justify-end gap-2 pt-4">
+                {formMode === "edit" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={resetFormRHF} // Atualizado
+                    disabled={isSubmitting}
+                  >
+                    Cancelar
+                  </Button>
+                )}
+
+                <Button
                 type="submit"
                 variant={formMode === "create" ? "default" : "success"}
                 className="flex items-center gap-1"
+                disabled={isSubmitting || isLoading}
               >
-                {formMode === "create" ? "Cadastrar Motorista" : "Atualizar Motorista"}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  formMode === "create" ? "Cadastrar Motorista" : "Atualizar Motorista"
+                )}
               </Button>
             </div>
           </form>
@@ -319,6 +363,7 @@ export function CadastroMotoristas() {
                             size="sm"
                             onClick={() => handleEdit(driver)}
                             aria-label={`Editar ${driver.name}`}
+                            disabled={deletingId === driver.id || isSubmitting}
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -328,8 +373,13 @@ export function CadastroMotoristas() {
                             className="text-error hover:text-error/90"
                             onClick={() => handleDelete(driver.id)}
                             aria-label={`Excluir ${driver.name}`}
+                            disabled={deletingId === driver.id || isSubmitting}
                           >
-                            <Trash className="h-4 w-4" />
+                            {deletingId === driver.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash className="h-4 w-4" />
+                            )}
                           </Button>
                         </div>
                       </TableCell>

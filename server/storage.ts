@@ -23,6 +23,10 @@ import {
   ChecklistResult,
   InsertChecklistResult
 } from "@shared/schema";
+import * as fs from "fs";
+import * as path from "path";
+
+const DATA_DIR = path.join(__dirname, "data");
 
 // Extend the storage interface with CRUD methods
 export interface IStorage {
@@ -158,12 +162,90 @@ export class MemStorage implements IStorage {
     this.vehicleChecklistCurrentId = 1;
     this.checklistResultCurrentId = 1;
 
-    // Add initial data
-    this.initializeData();
+    this._ensureDataDir();
+    this._loadAllData();
   }
 
-  private initializeData() {
-    // ... (Seu código original de inserção de dados iniciais)
+  private _ensureDataDir(): void {
+    try {
+      if (!fs.existsSync(DATA_DIR)) {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+      }
+    } catch (error) {
+      console.error("Error creating data directory:", error);
+    }
+  }
+
+  private _getFilePath(entityName: string): string {
+    return path.join(DATA_DIR, `${entityName}.json`);
+  }
+
+  private _loadData<T extends { id: any }>(entityName: string, entityMap: Map<any, T>): number {
+    const filePath = this._getFilePath(entityName);
+    let maxId = 0;
+    try {
+      if (fs.existsSync(filePath)) {
+        const fileContent = fs.readFileSync(filePath, "utf-8");
+        const dataArray = JSON.parse(fileContent) as T[];
+        entityMap.clear(); // Clear existing in-memory data
+        for (const item of dataArray) {
+          entityMap.set(item.id, item);
+          const numericId = typeof item.id === 'string' ? parseInt(item.id, 10) : item.id;
+          if (numericId > maxId) {
+            maxId = numericId;
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error loading data for ${entityName}:`, error);
+    }
+    return maxId;
+  }
+
+  private _saveData<T>(entityName: string, dataMap: Map<any, T>): void {
+    const filePath = this._getFilePath(entityName);
+    try {
+      const dataArray = Array.from(dataMap.values());
+      fs.writeFileSync(filePath, JSON.stringify(dataArray, null, 2), "utf-8");
+    } catch (error) {
+      console.error(`Error saving data for ${entityName}:`, error);
+    }
+  }
+
+  private _loadAllData(): void {
+    let maxId = 0;
+    maxId = this._loadData("users", this.users);
+    this.userCurrentId = isNaN(maxId) ? 1 : maxId + 1;
+
+    maxId = this._loadData("vehicles", this.vehicles);
+    this.vehicleCurrentId = maxId + 1;
+
+    maxId = this._loadData("drivers", this.drivers);
+    this.driverCurrentId = maxId + 1;
+
+    maxId = this._loadData("fuelStations", this.fuelStations);
+    this.fuelStationCurrentId = maxId + 1;
+
+    maxId = this._loadData("fuelTypes", this.fuelTypes);
+    this.fuelTypeCurrentId = maxId + 1;
+
+    maxId = this._loadData("maintenanceTypes", this.maintenanceTypes);
+    this.maintenanceTypeCurrentId = maxId + 1;
+
+    maxId = this._loadData("registrations", this.registrations);
+    this.registrationCurrentId = maxId + 1;
+
+    maxId = this._loadData("checklistTemplates", this.checklistTemplates);
+    this.checklistTemplateCurrentId = maxId + 1;
+
+    maxId = this._loadData("checklistItems", this.checklistItems);
+    this.checklistItemCurrentId = maxId + 1;
+
+    maxId = this._loadData("vehicleChecklists", this.vehicleChecklists);
+    this.vehicleChecklistCurrentId = maxId + 1;
+
+    maxId = this._loadData("checklistResults", this.checklistResults);
+    this.checklistResultCurrentId = maxId + 1;
   }
 
   // --- User methods ---
@@ -179,6 +261,7 @@ export class MemStorage implements IStorage {
     const id = this.userCurrentId++;
     const user: User = { ...insertUser, id };
     this.users.set(id, user);
+    this._saveData("users", this.users);
     return user;
   }
 
@@ -193,6 +276,7 @@ export class MemStorage implements IStorage {
     const id = this.vehicleCurrentId++;
     const vehicle: Vehicle = { ...insertVehicle, id };
     this.vehicles.set(id, vehicle);
+    this._saveData("vehicles", this.vehicles);
     return vehicle;
   }
   async updateVehicle(id: number, data: any): Promise<Vehicle> {
@@ -200,12 +284,17 @@ export class MemStorage implements IStorage {
     if (!existingVehicle) throw new Error(`Veículo com ID ${id} não encontrado`);
     const updatedVehicle: Vehicle = { ...existingVehicle, ...data, id };
     this.vehicles.set(id, updatedVehicle);
+    this._saveData("vehicles", this.vehicles);
     return updatedVehicle;
   }
   async deleteVehicle(id: number): Promise<boolean> {
     const exists = this.vehicles.has(id);
     if (!exists) throw new Error(`Veículo com ID ${id} não encontrado`);
-    return this.vehicles.delete(id);
+    const deleted = this.vehicles.delete(id);
+    if (deleted) {
+      this._saveData("vehicles", this.vehicles);
+    }
+    return deleted;
   }
 
   // --- Driver methods ---
@@ -219,6 +308,7 @@ export class MemStorage implements IStorage {
     const id = this.driverCurrentId++;
     const driver: Driver = { ...insertDriver, id };
     this.drivers.set(id, driver);
+    this._saveData("drivers", this.drivers);
     return driver;
   }
   async updateDriver(id: number, data: any): Promise<Driver> {
@@ -226,12 +316,17 @@ export class MemStorage implements IStorage {
     if (!existingDriver) throw new Error(`Motorista com ID ${id} não encontrado`);
     const updatedDriver: Driver = { ...existingDriver, ...data, id };
     this.drivers.set(id, updatedDriver);
+    this._saveData("drivers", this.drivers);
     return updatedDriver;
   }
   async deleteDriver(id: number): Promise<boolean> {
     const exists = this.drivers.has(id);
     if (!exists) throw new Error(`Motorista com ID ${id} não encontrado`);
-    return this.drivers.delete(id);
+    const deleted = this.drivers.delete(id);
+    if (deleted) {
+      this._saveData("drivers", this.drivers);
+    }
+    return deleted;
   }
 
   // --- Fuel station methods ---
@@ -245,6 +340,7 @@ export class MemStorage implements IStorage {
     const id = this.fuelStationCurrentId++;
     const fuelStation: FuelStation = { ...insertFuelStation, id };
     this.fuelStations.set(id, fuelStation);
+    this._saveData("fuelStations", this.fuelStations);
     return fuelStation;
   }
   async updateFuelStation(id: number, data: any): Promise<FuelStation> {
@@ -252,12 +348,17 @@ export class MemStorage implements IStorage {
     if (!existing) throw new Error(`Posto com ID ${id} não encontrado`);
     const updated: FuelStation = { ...existing, ...data, id };
     this.fuelStations.set(id, updated);
+    this._saveData("fuelStations", this.fuelStations);
     return updated;
   }
   async deleteFuelStation(id: number): Promise<boolean> {
     const exists = this.fuelStations.has(id);
     if (!exists) throw new Error(`Posto com ID ${id} não encontrado`);
-    return this.fuelStations.delete(id);
+    const deleted = this.fuelStations.delete(id);
+    if (deleted) {
+      this._saveData("fuelStations", this.fuelStations);
+    }
+    return deleted;
   }
 
   // --- Fuel type methods ---
@@ -271,6 +372,7 @@ export class MemStorage implements IStorage {
     const id = this.fuelTypeCurrentId++;
     const fuelType: FuelType = { ...insertFuelType, id };
     this.fuelTypes.set(id, fuelType);
+    this._saveData("fuelTypes", this.fuelTypes);
     return fuelType;
   }
   async updateFuelType(id: number, data: any): Promise<FuelType> {
@@ -278,12 +380,17 @@ export class MemStorage implements IStorage {
     if (!existing) throw new Error(`Tipo de combustível com ID ${id} não encontrado`);
     const updated: FuelType = { ...existing, ...data, id };
     this.fuelTypes.set(id, updated);
+    this._saveData("fuelTypes", this.fuelTypes);
     return updated;
   }
   async deleteFuelType(id: number): Promise<boolean> {
     const exists = this.fuelTypes.has(id);
     if (!exists) throw new Error(`Tipo de combustível com ID ${id} não encontrado`);
-    return this.fuelTypes.delete(id);
+    const deleted = this.fuelTypes.delete(id);
+    if (deleted) {
+      this._saveData("fuelTypes", this.fuelTypes);
+    }
+    return deleted;
   }
 
   // --- Maintenance type methods ---
@@ -297,6 +404,7 @@ export class MemStorage implements IStorage {
     const id = this.maintenanceTypeCurrentId++;
     const maintenanceType: MaintenanceType = { ...insertMaintenanceType, id };
     this.maintenanceTypes.set(id, maintenanceType);
+    this._saveData("maintenanceTypes", this.maintenanceTypes);
     return maintenanceType;
   }
   async updateMaintenanceType(id: number, data: any): Promise<MaintenanceType> {
@@ -304,12 +412,17 @@ export class MemStorage implements IStorage {
     if (!existing) throw new Error(`Tipo de manutenção com ID ${id} não encontrado`);
     const updated: MaintenanceType = { ...existing, ...data, id };
     this.maintenanceTypes.set(id, updated);
+    this._saveData("maintenanceTypes", this.maintenanceTypes);
     return updated;
   }
   async deleteMaintenanceType(id: number): Promise<boolean> {
     const exists = this.maintenanceTypes.has(id);
     if (!exists) throw new Error(`Tipo de manutenção com ID ${id} não encontrado`);
-    return this.maintenanceTypes.delete(id);
+    const deleted = this.maintenanceTypes.delete(id);
+    if (deleted) {
+      this._saveData("maintenanceTypes", this.maintenanceTypes);
+    }
+    return deleted;
   }
 
   // --- Vehicle registration methods ---
@@ -318,6 +431,7 @@ export class MemStorage implements IStorage {
     if (!existingRegistration) throw new Error(`Registro com ID ${id} não encontrado`);
     const updatedRegistration: VehicleRegistration = { ...existingRegistration, ...data, id };
     this.registrations.set(id, updatedRegistration);
+    this._saveData("registrations", this.registrations);
     return updatedRegistration;
   }
   async getRegistrations(filters?: {
@@ -342,12 +456,17 @@ export class MemStorage implements IStorage {
     const id = this.registrationCurrentId++;
     const registration: VehicleRegistration = { ...insertRegistration, id };
     this.registrations.set(id, registration);
+    this._saveData("registrations", this.registrations);
     return registration;
   }
   async deleteRegistration(id: number): Promise<boolean> {
     const exists = this.registrations.has(id);
     if (!exists) throw new Error(`Registro com ID ${id} não encontrado`);
-    return this.registrations.delete(id);
+    const deleted = this.registrations.delete(id);
+    if (deleted) {
+      this._saveData("registrations", this.registrations);
+    }
+    return deleted;
   }
 
   // --- Checklist template methods ---
@@ -361,6 +480,11 @@ export class MemStorage implements IStorage {
     const id = this.checklistTemplateCurrentId++;
     const checklistTemplate: ChecklistTemplate = { ...template, id };
     this.checklistTemplates.set(id, checklistTemplate);
+    this._saveData("checklistTemplates", this.checklistTemplates);
+    // Note: Checklist items are part of a template, typically managed when template is managed
+    // or through dedicated item methods if items can be added/removed from an existing template.
+    // For now, assuming items are created with the template and not modified independently here.
+    // If items can be modified, _saveData("checklistItems", this.checklistItems) might be needed in item methods.
     return checklistTemplate;
   }
 
@@ -377,6 +501,14 @@ export class MemStorage implements IStorage {
     const id = this.checklistItemCurrentId++;
     const checklistItem: ChecklistItem = { ...item, id };
     this.checklistItems.set(id, checklistItem);
+    this._saveData("checklistItems", this.checklistItems);
+    // Also save the parent template as items are part of it conceptually.
+    // This might be redundant if templates are saved upon item addition through another flow.
+    // Consider if checklistItems should be saved only when the template is saved.
+    // For now, saving both for explicitness.
+    if (this.checklistTemplates.has(item.templateId)) {
+        this._saveData("checklistTemplates", this.checklistTemplates);
+    }
     return checklistItem;
   }
 
@@ -404,6 +536,7 @@ export class MemStorage implements IStorage {
     if (!checklist.date) checklist.date = new Date();
     const vehicleChecklist: VehicleChecklist = { ...checklist, id };
     this.vehicleChecklists.set(id, vehicleChecklist);
+    this._saveData("vehicleChecklists", this.vehicleChecklists);
     return vehicleChecklist;
   }
   async updateVehicleChecklist(id: number, data: any): Promise<VehicleChecklist> {
@@ -411,10 +544,23 @@ export class MemStorage implements IStorage {
     if (!existingChecklist) throw new Error(`Checklist with id ${id} not found`);
     const updatedChecklist: VehicleChecklist = { ...existingChecklist, ...data, id };
     this.vehicleChecklists.set(id, updatedChecklist);
+    this._saveData("vehicleChecklists", this.vehicleChecklists);
     return updatedChecklist;
   }
   async deleteVehicleChecklist(id: number): Promise<boolean> {
-    return this.vehicleChecklists.delete(id);
+    const deleted = this.vehicleChecklists.delete(id);
+    if (deleted) {
+      this._saveData("vehicleChecklists", this.vehicleChecklists);
+      // Also delete associated checklist results
+      const resultsToDelete = Array.from(this.checklistResults.values()).filter(
+        (result) => result.checklistId === id
+      );
+      for (const result of resultsToDelete) {
+        this.checklistResults.delete(result.id);
+      }
+      this._saveData("checklistResults", this.checklistResults);
+    }
+    return deleted;
   }
 
   // --- Checklist result methods ---
@@ -428,54 +574,132 @@ export class MemStorage implements IStorage {
     const id = this.checklistResultCurrentId++;
     const checklistResult: ChecklistResult = { ...result, id };
     this.checklistResults.set(id, checklistResult);
+    this._saveData("checklistResults", this.checklistResults);
     return checklistResult;
   }
   async deleteChecklistResults(checklistId: number): Promise<boolean> {
     const resultsToDelete = Array.from(this.checklistResults.values()).filter(
       (result) => result.checklistId === checklistId
     );
+    let changed = false;
     for (const result of resultsToDelete) {
-      this.checklistResults.delete(result.id);
+      if (this.checklistResults.delete(result.id)) {
+        changed = true;
+      }
     }
-    return true;
+    if (changed) {
+      this._saveData("checklistResults", this.checklistResults);
+    }
+    return changed;
   }
 
   // --- Replit Auth ---
-  async getUser(id: string): Promise<User | undefined> {
-    const numId = parseInt(id);
-    return this.users.get(numId);
+  // Note: The original IStorage defines getUser(id: string) but MemStorage implemented getUser(id: number)
+  // The Replit Auth section seems to be an attempt to bridge this or handle user data differently.
+  // For persistence, we'll focus on the main users Map and its numeric ID.
+  // The `id: string` version for Replit Auth will use the persisted numeric ID map.
+
+  async getUser(id: string): Promise<User | undefined> { // This is for Replit Auth, uses string ID.
+    // Attempt to find user by numeric ID if string is a number, or by matching string id (if that's a use case)
+    const numericId = parseInt(id);
+    if (!isNaN(numericId)) {
+      return this.users.get(numericId);
+    }
+    // If id is not purely numeric, it might be a specific string key used by Replit Auth (e.g. Replit user ID)
+    // The current User schema uses `id: number` for internal storage.
+    // This part needs clarification if Replit User IDs are different from internal numeric IDs.
+    // Assuming for now that Replit Auth user IDs are stored as the numeric primary key in the users Map.
+    // If Replit IDs are separate string identifiers, the User model and storage logic would need adjustment.
+    // For now, this will only find users if `id` can be parsed to their numeric key.
+    // This also means upsertUser needs to handle string IDs correctly if they are not just numbers.
+    return Array.from(this.users.values()).find(user => user.id.toString() === id);
   }
+
   async upsertUser(userData: UpsertUser): Promise<User> {
-    const existingUser = Array.from(this.users.values()).find(user => user.id === userData.id);
+    // The User ID from Replit might be a string or number. Our internal map uses numbers.
+    // We need to decide how to map Replit User IDs (which can be strings like "repl_user_123")
+    // to our internal numeric IDs, or if we should change our internal ID to string for users.
+    // For now, let's assume userData.id from UpsertUser *is* the numeric ID or a string version of it.
+    
+    const incomingIdIsNumeric = typeof userData.id === 'number';
+    const incomingIdIsStringNumeric = typeof userData.id === 'string' && /^\d+$/.test(userData.id);
+
+    let numericIdToUse: number;
+
+    if (incomingIdIsNumeric) {
+      numericIdToUse = userData.id as number;
+    } else if (incomingIdIsStringNumeric) {
+      numericIdToUse = parseInt(userData.id as string, 10);
+    } else {
+      // If userData.id is a non-numeric string (e.g. a Replit username or specific ID)
+      // We need a strategy. For now, we'll try to find an existing user by this string ID
+      // or create a new one using the auto-incrementing numeric ID.
+      // This part is tricky because the schema uses `id: number` but Replit might send `id: string`.
+      // Let's assume for this implementation, if `userData.id` is a non-numeric string,
+      // it refers to a Replit-specific ID field that isn't the primary key in our `users` map.
+      // We'll search by username or a dedicated `replitId` field if it existed.
+      // Since it doesn't, we will proceed as if creating a new user or matching by existing numeric id.
+
+      // This simplified logic assumes UpsertUser's ID field directly maps to our numeric User ID.
+      // This might not be correct for all Replit Auth flows.
+      const existingUserByNonNumericId = Array.from(this.users.values()).find(u => u.id.toString() === userData.id);
+      if (existingUserByNonNumericId) {
+        numericIdToUse = existingUserByNonNumericId.id;
+      } else {
+        // If no existing user by this string ID, and it's not numeric, create a new user.
+        // This means the string ID from Replit isn't being used as the primary key directly.
+        numericIdToUse = this.userCurrentId;
+      }
+    }
+    
+    const existingUser = this.users.get(numericIdToUse);
+
     if (existingUser) {
-      const updatedUser = { ...existingUser, ...userData, updatedAt: new Date() };
-      this.users.set(parseInt(updatedUser.id), updatedUser);
+      const updatedUser: User = { 
+        ...existingUser, 
+        ...userData, 
+        id: numericIdToUse, // Ensure ID remains numeric
+        username: userData.username || existingUser.username, // Keep existing username if not provided
+        // email: userData.email || existingUser.email, // Keep existing email if not provided
+        updatedAt: new Date() 
+      };
+      this.users.set(numericIdToUse, updatedUser);
+      this._saveData("users", this.users);
       return updatedUser;
     } else {
-      const newUserId = userData.id || this.userCurrentId.toString();
+      // If numericIdToUse was from this.userCurrentId, increment it.
+      if (numericIdToUse === this.userCurrentId) {
+         this.userCurrentId++;
+      } else if (numericIdToUse >= this.userCurrentId) {
+        // If a specific numeric ID was provided (e.g. "123") that's higher than current, update currentId
+        this.userCurrentId = numericIdToUse + 1;
+      }
+
       const newUser: User = {
-        ...userData,
-        id: newUserId,
+        id: numericIdToUse, // Use the determined numeric ID
+        username: userData.username || `user${numericIdToUse}`, // Default username if not provided
+        // email: userData.email || "", // Default email if not provided
+        // name: userData.name || "", // Default name if not provided
+        // avatarUrl: userData.avatarUrl || "", // Default avatar if not provided
         createdAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        // Ensure all required fields from User are present, possibly from UpsertUser or defaults
+        ...(userData as Omit<UpsertUser, 'id'> & { id?: any }) // Spread other userData fields
       };
-      this.users.set(parseInt(newUserId), newUser);
-      this.userCurrentId = Math.max(this.userCurrentId, parseInt(newUserId) + 1);
+      this.users.set(numericIdToUse, newUser);
+      this._saveData("users", this.users);
       return newUser;
     }
   }
   async getUserById(id: string): Promise<User | null> {
+    // This method seems to be a duplicate or alternative to `getUser(id: string)`.
+    // It also mentions localStorage which is not available in Node.js backend.
+    // We should rely on the main `getUser` method that uses the in-memory `this.users` Map.
     try {
-      const userId = id;
-      // Tentar buscar do localStorage primeiro (padrão do seu exemplo)
-      // No NodeJS isso não existe, mas ok, mantém a compatibilidade do código
-      const userFromStorage = typeof localStorage !== "undefined" ? localStorage.getItem(`user_${userId}`) : null;
-      if (userFromStorage) {
-        return JSON.parse(userFromStorage);
-      }
-      return null;
+      const user = await this.getUser(id); // Use the class's main getUser method
+      return user || null;
     } catch (error) {
-      console.error('Erro ao buscar usuário:', error);
+      console.error('Erro ao buscar usuário by ID:', error);
       return null;
     }
   }

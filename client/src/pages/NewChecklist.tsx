@@ -480,97 +480,9 @@ export default function NewChecklist() {
     );
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    // Previne múltiplos cliques
-    if (isSaving) return;
-
-    setIsSaving(true);
-
-    try {
-      // Verificar se todos os campos obrigatórios estão preenchidos
-      if (!form.getValues("vehicleId") || !form.getValues("driverId") || !form.getValues("templateId")) {
-        toast({
-          title: "Dados incompletos",
-          description: "Por favor, preencha todos os campos obrigatórios.",
-          variant: "destructive",
-        });
-        setIsSaving(false);
-        return;
-      }
-
-      // Preparar o FormData para envio
-      const formData = new FormData();
-      const resultsToSend = Object.entries(results).map(([itemId, result]) => {
-        return {
-          itemId: parseInt(itemId),
-          status: result.status || "ok",
-          observation: result.observation,
-          photoUrl: result.photoUrl,
-        };
-      });
-
-      const checklistData = {
-        vehicleId: parseInt(form.getValues("vehicleId")),
-        driverId: parseInt(form.getValues("driverId")),
-        templateId: parseInt(form.getValues("templateId")),
-        odometer: parseInt(form.getValues("odometer")),
-        observations: form.getValues("observations") || null,
-        date: editMode && existingChecklist?.date ? new Date(existingChecklist.date) : new Date(),
-        status: "pending",
-        results: resultsToSend,
-      };
-
-      formData.append("data", JSON.stringify(checklistData));
-
-      // Determinar URL com base em modo de edição
-      const url = editMode
-        ? `/api/checklists/${checklistId}`
-        : "/api/checklists";
-
-      // Configurar método com base em modo de edição
-      const method = editMode ? "PUT" : "POST";
-
-      const response = await fetch(url, {
-        method,
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: "Erro desconhecido" }));
-        throw new Error(errorData.message || `Erro ao ${editMode ? "atualizar" : "criar"} checklist`);
-      }
-
-      const result = await response.json();
-
-      toast({
-        title: editMode ? "Checklist atualizado" : "Checklist criado",
-        description: editMode
-          ? "O checklist foi atualizado com sucesso."
-          : "O checklist foi criado com sucesso.",
-      });
-
-      // Redirecionar para a página de detalhes do checklist após um breve delay
-      // para permitir que o toast seja exibido
-      setTimeout(() => {
-        setIsSaving(false); // Garantir que o estado é resetado antes da navegação
-        setLocation(`/checklists/${editMode ? checklistId : result.id}`);
-      }, 500);
-
-      return; // Importante: impede a execução do setIsSaving(false) no finally
-    } catch (error) {
-      console.error("Erro ao salvar checklist:", error);
-      toast({
-        title: "Erro",
-        description: `Ocorreu um erro ao ${
-          editMode ? "atualizar" : "criar"
-        } o checklist: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
-        variant: "destructive",
-      });
-      setIsSaving(false);
-    }
-  };
+  // A função handleSubmit abaixo foi identificada como redundante e será removida.
+  // A lógica de submissão principal é tratada pela função `onSubmit` que é passada
+  // para `form.handleSubmit(onSubmit)` no JSX do formulário.
 
   return (
     <div className="space-y-6 pb-10">
@@ -581,6 +493,7 @@ export default function NewChecklist() {
             size="icon"
             onClick={handleBack}
             className="h-8 w-8 text-blue-700 mr-2"
+            disabled={isSubmitting} // Desabilitar durante a submissão
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -591,13 +504,14 @@ export default function NewChecklist() {
             variant={selectedTab === "info" ? "default" : "outline"}
             onClick={() => setSelectedTab("info")}
             className={selectedTab === "info" ? "bg-blue-700" : "text-blue-700 border-blue-700"}
+            disabled={isSubmitting} // Desabilitar durante a submissão
           >
             1. Informações Básicas
           </Button>
           <Button
             variant={selectedTab === "items" ? "default" : "outline"}
             onClick={() => baseFormComplete && setSelectedTab("items")}
-            disabled={!baseFormComplete}
+            disabled={!baseFormComplete || isSubmitting} // Desabilitar durante a submissão
             className={selectedTab === "items" ? "bg-blue-700" : "text-blue-700 border-blue-700"}
           >
             2. Itens do Checklist
@@ -867,8 +781,8 @@ export default function NewChecklist() {
 
             {selectedTab === "info" ? (
               <Button 
-                type="submit"
-                disabled={isSubmitting}
+                type="submit" // Este botão, quando na aba "info", avança para "items"
+                disabled={isSubmitting} // Desabilitar se o checklist final estiver sendo salvo
                 className="bg-blue-700 hover:bg-blue-800"
               >
                 Próximo
@@ -876,12 +790,21 @@ export default function NewChecklist() {
               </Button>
             ) : (
               <Button 
-                type="submit"
+                type="submit" // Este botão, quando na aba "items", salva o checklist
                 disabled={isSubmitting || !allItemsChecked()}
-                className="bg-blue-700 hover:bg-blue-800"
+                className="bg-blue-700 hover:bg-blue-800 flex items-center"
               >
-                {isSubmitting ? "Salvando..." : "Salvar Checklist"}
-                {isSubmitting ? null : <Save className="ml-2 h-4 w-4" />}
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    Salvar Checklist
+                    <Save className="ml-2 h-4 w-4" />
+                  </>
+                )}
               </Button>
             )}
           </div>

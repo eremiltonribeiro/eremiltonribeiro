@@ -26,7 +26,8 @@ import {
   Settings,
   Users,
   Car,
-  PlusCircle
+  PlusCircle,
+  Loader2 // Adicionado Loader2
 } from "lucide-react";
 
 // Tipos
@@ -75,6 +76,13 @@ export default function UserManagement() {
   const [name, setName] = useState("");
   const [role, setRole] = useState("user");
   const [formErrors, setFormErrors] = useState<{[key: string]: string}>({});
+  
+  // Estados de loading para os diálogos
+  const [isSavingUser, setIsSavingUser] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [isSavingRole, setIsSavingRole] = useState(false);
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+
   const [newRole, setNewRole] = useState<UserRole>({
     id: "",
     name: "",
@@ -332,10 +340,11 @@ export default function UserManagement() {
   // Salvar usuário (novo ou edição)
   const handleSaveUser = () => {
     if (!validateUserForm()) return;
+    setIsSavingUser(true);
+    try {
+      const storedUsers = JSON.parse(localStorage.getItem("appUsers") || "{}");
     
-    const storedUsers = JSON.parse(localStorage.getItem("appUsers") || "{}");
-    
-    if (currentUser === null) {
+      if (currentUser === null) {
       // Novo usuário
       // Verificar se o nome de usuário já existe
       if (storedUsers[username]) {
@@ -402,17 +411,23 @@ export default function UserManagement() {
         description: "Usuário atualizado com sucesso",
       });
     }
-    
     setDialogOpen(false);
+  } catch (error) {
+    console.error("Erro ao salvar usuário:", error);
+    toast({ title: "Erro", description: "Falha ao salvar usuário.", variant: "destructive" });
+  } finally {
+    setIsSavingUser(false);
+  }
   };
   
   // Salvar alteração de senha
   const handleSavePassword = () => {
     if (!validatePasswordForm() || !currentUser) return;
+    setIsSavingPassword(true);
+    try {
+      const storedUsers = JSON.parse(localStorage.getItem("appUsers") || "{}");
     
-    const storedUsers = JSON.parse(localStorage.getItem("appUsers") || "{}");
-    
-    // Atualizar senha
+      // Atualizar senha
     storedUsers[currentUser.username] = {
       ...storedUsers[currentUser.username],
       password: newPassword
@@ -423,16 +438,22 @@ export default function UserManagement() {
       title: "Sucesso",
       description: "Senha alterada com sucesso",
     });
-    
     setPasswordDialogOpen(false);
+  } catch (error) {
+    console.error("Erro ao salvar senha:", error);
+    toast({ title: "Erro", description: "Falha ao salvar nova senha.", variant: "destructive" });
+  } finally {
+    setIsSavingPassword(false);
+  }
   };
   
   // Salvar novo perfil
   const handleSaveRole = () => {
     if (!validateRoleForm()) return;
-    
-    // Novo perfil
-    const roleToSave: UserRole = {
+    setIsSavingRole(true);
+    try {
+      // Novo perfil
+      const roleToSave: UserRole = {
       ...newRole,
       id: Date.now().toString()
     };
@@ -445,17 +466,23 @@ export default function UserManagement() {
       title: "Sucesso",
       description: "Perfil criado com sucesso",
     });
-    
     setRoleDialogOpen(false);
+  } catch (error) {
+    console.error("Erro ao salvar perfil:", error);
+    toast({ title: "Erro", description: "Falha ao criar perfil.", variant: "destructive" });
+  } finally {
+    setIsSavingRole(false);
+  }
   };
   
   // Salvar edição de perfil
   const handleUpdateRole = () => {
     if (!validateRoleForm() || !currentRole) return;
-    
-    const updatedRoles = userRoles.map(r => 
-      r.id === currentRole.id ? newRole : r
-    );
+    setIsUpdatingRole(true);
+    try {
+      const updatedRoles = userRoles.map(r => 
+        r.id === currentRole.id ? newRole : r
+      );
     
     setUserRoles(updatedRoles);
     localStorage.setItem("userRoles", JSON.stringify(updatedRoles));
@@ -464,8 +491,13 @@ export default function UserManagement() {
       title: "Sucesso",
       description: "Perfil atualizado com sucesso",
     });
-    
     setEditRoleDialogOpen(false);
+  } catch (error) {
+    console.error("Erro ao atualizar perfil:", error);
+    toast({ title: "Erro", description: "Falha ao atualizar perfil.", variant: "destructive" });
+  } finally {
+    setIsUpdatingRole(false);
+  }
   };
   
   // Deletar usuário
@@ -830,14 +862,20 @@ export default function UserManagement() {
             <Button
               variant="outline"
               onClick={() => setDialogOpen(false)}
+              disabled={isSavingUser}
             >
               Cancelar
             </Button>
             <Button
               onClick={handleSaveUser}
               className="bg-blue-700 hover:bg-blue-800"
+              disabled={isSavingUser}
             >
-              {currentUser ? "Salvar" : "Criar"}
+              {isSavingUser ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+              ) : (
+                currentUser ? "Salvar" : "Criar"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -905,14 +943,20 @@ export default function UserManagement() {
             <Button
               variant="outline"
               onClick={() => setPasswordDialogOpen(false)}
+              disabled={isSavingPassword}
             >
               Cancelar
             </Button>
             <Button
               onClick={handleSavePassword}
               className="bg-blue-700 hover:bg-blue-800"
+              disabled={isSavingPassword}
             >
-              Alterar Senha
+              {isSavingPassword ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Alterando...</>
+              ) : (
+                "Alterar Senha"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1087,14 +1131,20 @@ export default function UserManagement() {
             <Button
               variant="outline"
               onClick={() => setRoleDialogOpen(false)}
+              disabled={isSavingRole}
             >
               Cancelar
             </Button>
             <Button
               onClick={handleSaveRole}
               className="bg-blue-700 hover:bg-blue-800"
+              disabled={isSavingRole}
             >
-              Criar Perfil
+              {isSavingRole ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Criando...</>
+              ) : (
+                "Criar Perfil"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1269,14 +1319,20 @@ export default function UserManagement() {
             <Button
               variant="outline"
               onClick={() => setEditRoleDialogOpen(false)}
+              disabled={isUpdatingRole}
             >
               Cancelar
             </Button>
             <Button
               onClick={handleUpdateRole}
               className="bg-blue-700 hover:bg-blue-800"
+              disabled={isUpdatingRole}
             >
-              Salvar Alterações
+              {isUpdatingRole ? (
+                <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando...</>
+              ) : (
+                "Salvar Alterações"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
