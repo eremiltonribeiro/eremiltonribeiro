@@ -1,0 +1,57 @@
+x Build failed in 3.75s
+error during build:
+[vite:esbuild] Transform failed with 5 errors:
+/home/runner/workspace/client/src/components/cadastros/CadastroVeiculos.tsx:361:10: ERROR: Unexpected closing "CardContent" tag does not match opening "Form" tag
+/home/runner/workspace/client/src/components/cadastros/CadastroVeiculos.tsx:362:8: ERROR: Unexpected closing "Card" tag does not match opening "CardContent" tag
+/home/runner/workspace/client/src/components/cadastros/CadastroVeiculos.tsx:440:6: ERROR: Unexpected closing "div" tag does not match opening "Card" tag
+/home/runner/workspace/client/src/components/cadastros/CadastroVeiculos.tsx:442:0: ERROR: The character "}" is not valid inside a JSX element
+/home/runner/workspace/client/src/components/cadastros/CadastroVeiculos.tsx:443:0: ERROR: Unexpected end of file before a closing "div" tag
+file: /home/runner/workspace/client/src/components/cadastros/CadastroVeiculos.tsx:361:10
+
+Unexpected closing "CardContent" tag does not match opening "Form" tag
+359|              </div>
+360|            </form>
+361|          </CardContent>
+   |            ^
+362|        </Card>
+363|        
+
+Unexpected closing "Card" tag does not match opening "CardContent" tag
+360|            </form>
+361|          </CardContent>
+362|        </Card>
+   |          ^
+363|        
+364|        {/* Lista de veículos cadastrados */}
+
+Unexpected closing "div" tag does not match opening "Card" tag
+438|          </CardContent>
+439|        </Card>
+440|      </div>
+   |        ^
+441|    );
+442|  }
+
+The character "}" is not valid inside a JSX element
+440|      </div>
+441|    );
+442|  }
+   |  ^
+443|  
+
+Unexpected end of file before a closing "div" tag
+441|    );
+442|  }
+443|  
+   |  ^
+
+    at failureErrorWithLog (/home/runner/workspace/node_modules/vite/node_modules/esbuild/lib/main.js:1472:15)
+    at /home/runner/workspace/node_modules/vite/node_modules/esbuild/lib/main.js:755:50
+    at responseCallbacks.<computed> (/home/runner/workspace/node_modules/vite/node_modules/esbuild/lib/main.js:622:9)
+    at handleIncomingPacket (/home/runner/workspace/node_modules/vite/node_modules/esbuild/lib/main.js:677:12)
+    at Socket.readFromStdout (/home/runner/workspace/node_modules/vite/node_modules/esbuild/lib/main.js:600:7)
+    at Socket.emit (node:events:518:28)
+    at addChunk (node:internal/streams/readable:561:12)
+    at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+    at Readable.push (node:internal/streams/readable:392:5)
+    at Pipe.onStreamRead (node:internal/stream_base_commons:191:23)
