@@ -28,6 +28,7 @@ class SyncManager {
   private syncListeners: Array<(hasPendingOperations: boolean) => void> = [];
   private onlineStatusListeners: Array<(isOnline: boolean) => void> = [];
   private toastHandler: ((options: { title: string; description?: string; variant?: 'default' | 'destructive' | 'success'; duration?: number }) => void) | null = null;
+  private connectionFailures: number = 0;
 
   // Cache para operações pendentes para evitar consultas frequentes ao IndexedDB
   private pendingOperationsCache: PendingOperation[] | null = null;
@@ -51,20 +52,28 @@ class SyncManager {
     }
 
     let isConnected = false;
-    const maxRetries = 2;
+    const maxRetries = 3; // Aumentado para 3 tentativas
+    const baseTimeout = 2000; // Timeout base reduzido
 
     for (let retry = 0; retry < maxRetries && !isConnected; retry++) {
       try {
         const controller = new AbortController();
-        const timeout = 3000 + (retry * 1000); // Aumenta timeout a cada tentativa
+        const timeout = baseTimeout + (retry * 2000); // 2s, 4s, 6s
         const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+        // Adiciona um pequeno delay antes de cada tentativa (exceto a primeira)
+        if (retry > 0) {
+          await new Promise(resolve => setTimeout(resolve, 500 * retry));
+        }
 
         const response = await fetch('/api/ping', { 
           method: 'GET',
           cache: 'no-store',
+          credentials: 'same-origin',
           headers: { 
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0'
           },
           signal: controller.signal
         });
@@ -73,28 +82,40 @@ class SyncManager {
         
         if (response.ok) {
           const data = await response.json();
-          console.log(`Ping bem-sucedido (tentativa ${retry + 1}):`, data);
+          console.log(`✅ Conexão estabelecida (tentativa ${retry + 1}):`, data.message);
           isConnected = true;
           this.updateOnlineStatus(true);
         } else {
-          console.log(`Ping falhou com status ${response.status} (tentativa ${retry + 1})`);
+          console.log(`❌ Ping falhou - Status ${response.status} (tentativa ${retry + 1})`);
           if (retry === maxRetries - 1) {
             this.updateOnlineStatus(false);
           }
         }
       } catch (error) {
-        console.log(`Erro ao verificar conexão (tentativa ${retry + 1}):`, error.name, error.message);
+        const errorType = error.name === 'AbortError' ? 'Timeout' : error.name;
+        console.log(`⚠️ Erro de conexão: ${errorType} (tentativa ${retry + 1}/${maxRetries})`);
+        
         if (retry === maxRetries - 1) {
+          console.log('🔴 Conexão falhou após todas as tentativas');
           this.updateOnlineStatus(false);
-        } else {
-          // Pequena pausa antes da próxima tentativa
-          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
     }
 
-    // Reagendar verificação (aumenta intervalo se houve falha)
-    const nextCheckInterval = isConnected ? 90000 : 60000; // 1.5min se ok, 1min se falhou
+    // Reagendar verificação com backoff exponencial se houve falha
+    let nextCheckInterval;
+    if (isConnected) {
+      nextCheckInterval = 90000; // 1.5 minutos se conectado
+    } else {
+      // Backoff: 30s, 60s, 90s, depois volta para 60s
+      const backoffIntervals = [30000, 60000, 90000, 60000];
+      const currentFailures = this.connectionFailures || 0;
+      const intervalIndex = Math.min(currentFailures, backoffIntervals.length - 1);
+      nextCheckInterval = backoffIntervals[intervalIndex];
+      this.connectionFailures = currentFailures + 1;
+    }
+
+    console.log(`🔄 Próxima verificação em ${nextCheckInterval / 1000}s`);
     setTimeout(() => this.checkRealOnlineStatus(), nextCheckInterval);
   }
 
@@ -113,7 +134,12 @@ class SyncManager {
   private updateOnlineStatus(status: boolean) {
     if (this.isOnline !== status) {
       this.isOnline = status;
-      console.log(`Status de conexão alterado: ${status ? 'Online' : 'Offline'}`);
+      console.log(`Status de conexão alterado: ${status ? '🟢 Online' : '🔴 Offline'}`);
+
+      // Reset failure counter when connection is restored
+      if (status) {
+        this.connectionFailures = 0;
+      }
 
       // Notifica listeners
       this.onlineStatusListeners.forEach(listener => listener(status));
