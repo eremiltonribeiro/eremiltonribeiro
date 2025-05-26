@@ -217,21 +217,22 @@ export function CadastroPostos() {
                 )}
 
                 <Button
-                type="submit"
-                className="flex items-center gap-1"
-                disabled={isSubmitting || isLoading}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  formMode === "create" ? "Cadastrar Posto" : "Atualizar Posto"
-                )}
-              </Button>
-            </div>
-          </form>
+                  type="submit"
+                  className="flex items-center gap-1"
+                  disabled={isSubmitting || isLoading}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    formMode === "create" ? "Cadastrar Posto" : "Atualizar Posto"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </Form>
         </CardContent>
       </Card>
       
