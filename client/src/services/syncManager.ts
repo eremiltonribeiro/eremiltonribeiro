@@ -1,6 +1,4 @@
-Removing duplicated methods and attributes and resolving the dirname issue.
-```
-```replit_final_file
+// Removing duplicated methods and attributes and resolving the dirname issue.
 import { offlineStorage } from './offlineStorage';
 
 // Tipos para as operações pendentes
