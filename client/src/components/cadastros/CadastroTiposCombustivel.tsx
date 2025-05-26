@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react"; // Adicionado useEffect, embora não usado diretamente
 import { useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -204,21 +205,22 @@ export function CadastroTiposCombustivel() {
                 )}
 
                 <Button
-                type="submit"
-                className="flex items-center gap-1"
-                disabled={isSubmitting || isLoading}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  formMode === "create" ? "Cadastrar Tipo" : "Atualizar Tipo"
-                )}
-              </Button>
-            </div>
-          </form>
+                  type="submit"
+                  className="flex items-center gap-1"
+                  disabled={isSubmitting || isLoading}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    formMode === "create" ? "Cadastrar Tipo" : "Atualizar Tipo"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </Form>
         </CardContent>
       </Card>
       
