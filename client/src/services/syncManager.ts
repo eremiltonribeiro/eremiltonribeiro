@@ -50,37 +50,52 @@ class SyncManager {
       return;
     }
 
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // Reduzido para 3 segundos
+    let isConnected = false;
+    const maxRetries = 2;
 
-      const response = await fetch('/api/ping', { 
-        method: 'GET', // Mudado para GET
-        cache: 'no-store',
-        headers: { 
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        },
-        signal: controller.signal
-      });
+    for (let retry = 0; retry < maxRetries && !isConnected; retry++) {
+      try {
+        const controller = new AbortController();
+        const timeout = 3000 + (retry * 1000); // Aumenta timeout a cada tentativa
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const data = await response.json();
-        console.log('Ping bem-sucedido:', data);
-        this.updateOnlineStatus(true);
-      } else {
-        console.log('Ping falhou com status:', response.status);
-        this.updateOnlineStatus(false);
+        const response = await fetch('/api/ping', { 
+          method: 'GET',
+          cache: 'no-store',
+          headers: { 
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`Ping bem-sucedido (tentativa ${retry + 1}):`, data);
+          isConnected = true;
+          this.updateOnlineStatus(true);
+        } else {
+          console.log(`Ping falhou com status ${response.status} (tentativa ${retry + 1})`);
+          if (retry === maxRetries - 1) {
+            this.updateOnlineStatus(false);
+          }
+        }
+      } catch (error) {
+        console.log(`Erro ao verificar conexão (tentativa ${retry + 1}):`, error.name, error.message);
+        if (retry === maxRetries - 1) {
+          this.updateOnlineStatus(false);
+        } else {
+          // Pequena pausa antes da próxima tentativa
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
-    } catch (error) {
-      console.log('Erro ao verificar conexão:', error.name, error.message);
-      this.updateOnlineStatus(false);
     }
 
-    // Reagendar verificação
-    setTimeout(() => this.checkRealOnlineStatus(), 90000); // A cada 1.5 minutos
+    // Reagendar verificação (aumenta intervalo se houve falha)
+    const nextCheckInterval = isConnected ? 90000 : 60000; // 1.5min se ok, 1min se falhou
+    setTimeout(() => this.checkRealOnlineStatus(), nextCheckInterval);
   }
 
   // Handler para eventos online/offline
