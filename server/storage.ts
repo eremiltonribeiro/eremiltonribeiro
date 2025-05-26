@@ -26,7 +26,7 @@ import {
 import * as fs from "fs";
 import * as path from "path";
 
-const DATA_DIR = path.join(__dirname, "data");
+const DATA_DIR = path.join(import.meta.dirname, "data");
 
 // Extend the storage interface with CRUD methods
 export interface IStorage {
@@ -249,8 +249,20 @@ export class MemStorage implements IStorage {
   }
 
   // --- User methods ---
-  async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
+  async getUser(id: number): Promise<User | undefined>;
+  async getUser(id: string): Promise<User | undefined>;
+  async getUser(id: number | string): Promise<User | undefined> {
+    if (typeof id === 'number') {
+      return this.users.get(id);
+    }
+    
+    // Para string ID (Replit Auth)
+    const numericId = parseInt(id);
+    if (!isNaN(numericId)) {
+      return this.users.get(numericId);
+    }
+    
+    return Array.from(this.users.values()).find(user => user.id.toString() === id);
   }
   async getUserByUsername(username: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find(
@@ -594,26 +606,6 @@ export class MemStorage implements IStorage {
   }
 
   // --- Replit Auth ---
-  // Note: The original IStorage defines getUser(id: string) but MemStorage implemented getUser(id: number)
-  // The Replit Auth section seems to be an attempt to bridge this or handle user data differently.
-  // For persistence, we'll focus on the main users Map and its numeric ID.
-  // The `id: string` version for Replit Auth will use the persisted numeric ID map.
-
-  async getUser(id: string): Promise<User | undefined> { // This is for Replit Auth, uses string ID.
-    // Attempt to find user by numeric ID if string is a number, or by matching string id (if that's a use case)
-    const numericId = parseInt(id);
-    if (!isNaN(numericId)) {
-      return this.users.get(numericId);
-    }
-    // If id is not purely numeric, it might be a specific string key used by Replit Auth (e.g. Replit user ID)
-    // The current User schema uses `id: number` for internal storage.
-    // This part needs clarification if Replit User IDs are different from internal numeric IDs.
-    // Assuming for now that Replit Auth user IDs are stored as the numeric primary key in the users Map.
-    // If Replit IDs are separate string identifiers, the User model and storage logic would need adjustment.
-    // For now, this will only find users if `id` can be parsed to their numeric key.
-    // This also means upsertUser needs to handle string IDs correctly if they are not just numbers.
-    return Array.from(this.users.values()).find(user => user.id.toString() === id);
-  }
 
   async upsertUser(userData: UpsertUser): Promise<User> {
     // The User ID from Replit might be a string or number. Our internal map uses numbers.

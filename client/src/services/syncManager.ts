@@ -1,3 +1,6 @@
+Removing duplicated methods and attributes and resolving the dirname issue.
+```
+```replit_final_file
 import { offlineStorage } from './offlineStorage';
 
 // Tipos para as operações pendentes
@@ -27,7 +30,7 @@ class SyncManager {
   private syncListeners: Array<(hasPendingOperations: boolean) => void> = [];
   private onlineStatusListeners: Array<(isOnline: boolean) => void> = [];
   private toastHandler: ((options: { title: string; description?: string; variant?: 'default' | 'destructive' | 'success'; duration?: number }) => void) | null = null;
-  
+
   // Cache para operações pendentes para evitar consultas frequentes ao IndexedDB
   private pendingOperationsCache: PendingOperation[] | null = null;
   private pendingOperationsCacheTimestamp: number = 0;
@@ -152,29 +155,6 @@ class SyncManager {
   // Inicia o gerenciador de sincronização
   public setToastHandler(handler: (options: { title: string; description?: string; variant?: 'default' | 'destructive' | 'success'; duration?: number }) => void) {
     this.toastHandler = handler;
-  }
-
-  // Atualiza o status online e notifica listeners
-  private updateOnlineStatus(status: boolean) {
-    if (this.isOnline !== status) {
-      this.isOnline = status;
-      const message = status ? "Conectado à internet." : "Conexão perdida. Operações serão salvas localmente.";
-      console.log(`Status de conexão alterado: ${message}`);
-      if (this.toastHandler) {
-        this.toastHandler({ title: message, variant: status ? 'success' : 'destructive', duration: 3000 });
-      }
-
-      // Notifica listeners
-      this.onlineStatusListeners.forEach(listener => listener(status));
-
-      // Se ficou online, tenta sincronizar
-      if (status) {
-        this.syncPendingOperations();
-      }
-
-      // Atualiza visual para o usuário
-      this.updateOfflineUI(status);
-    }
   }
 
   // Método para atualizar a UI com status offline/online
@@ -306,7 +286,7 @@ class SyncManager {
     if (this.mutationObserver) {
       this.mutationObserver.disconnect();
     }
-    
+
     this.mutationObserver = new MutationObserver((mutations) => {
       // Otimização: verificar se as mutações são relevantes para mudança de página
       const significantChanges = mutations.some(mutation => 
@@ -317,7 +297,7 @@ class SyncManager {
           (node as Element).classList.contains('page-container')
         )
       );
-      
+
       if (significantChanges) {
         this.cacheCurrentPage();
       }
@@ -349,7 +329,7 @@ class SyncManager {
       window.clearInterval(this.intervalId);
       this.intervalId = null;
     }
-    
+
     // Desconectar o MutationObserver para evitar vazamentos de memória
     if (this.mutationObserver) {
       this.mutationObserver.disconnect();
@@ -380,18 +360,18 @@ class SyncManager {
   // Obtém operações pendentes com cache para melhorar performance
   private async getPendingOperations(): Promise<PendingOperation[]> {
     const now = Date.now();
-    
+
     // Se o cache for válido, use-o
     if (this.pendingOperationsCache && 
         (now - this.pendingOperationsCacheTimestamp) < this.pendingOperationsCacheMaxAge) {
       return this.pendingOperationsCache;
     }
-    
+
     // Caso contrário, busque do IndexedDB e atualize o cache
     const operations = await offlineStorage.getPendingOperations();
     this.pendingOperationsCache = operations;
     this.pendingOperationsCacheTimestamp = now;
-    
+
     return operations;
   }
 
@@ -423,7 +403,7 @@ class SyncManager {
 
       // Salva a operação pendente
       await offlineStorage.savePendingOperation(pendingOp);
-      
+
       // Invalidar o cache de operações pendentes
       this.pendingOperationsCache = null;
 
@@ -566,7 +546,7 @@ class SyncManager {
     };
 
     await offlineStorage.savePendingOperation(operation);
-    
+
     // Invalidar o cache de operações pendentes
     this.pendingOperationsCache = null;
 
@@ -603,7 +583,7 @@ class SyncManager {
         this.toastHandler({ title: "Sincronização iniciada...", description: `${initialPendingOps.length} operações pendentes.`, variant: 'default' });
       }
       this.updateOfflineUI(true, { state: 'syncing', count: initialPendingOps.length });
-      
+
       const sortedOperations = initialPendingOps.sort((a, b) => a.timestamp - b.timestamp);
       let successfulOpsCount = 0;
       let failedOpsWillRetryCount = 0;
@@ -622,7 +602,7 @@ class SyncManager {
 
       this.pendingOperationsCache = null; // Invalidar cache
       const remainingOps = await this.getPendingOperationsCount();
-      
+
       if (failedOpsCriticalCount > 0) {
         const message = `Falha crítica ao sincronizar ${failedOpsCriticalCount} operações.`;
         if (this.toastHandler) this.toastHandler({ title: "Erro de Sincronização", description: message, variant: 'destructive' });
@@ -643,7 +623,7 @@ class SyncManager {
       } else {
         this.updateOfflineUI(true, { state: 'completed', message: 'Nenhuma operação pendente.' });
       }
-      
+
       console.log(`Sincronização concluída. Sucesso: ${successfulOpsCount}, Falha (tentará novamente): ${failedOpsWillRetryCount}, Falha (crítica): ${failedOpsCriticalCount}`);
 
     } catch (error) {
@@ -654,7 +634,7 @@ class SyncManager {
       this.isSyncing = false;
     }
   }
-  
+
   // Processa uma única operação pendente
   private async processSingleOperation(op: PendingOperation): Promise<{ success: boolean; willRetry: boolean; criticalError: boolean }> {
     try {
@@ -740,7 +720,7 @@ class SyncManager {
       // A sincronização apenas confirma a operação no servidor.
 
       await offlineStorage.updateOperationStatus(op.id, 'completed');
-      
+
       // Após um tempo, remove a operação completada para não acumular
       setTimeout(() => {
         offlineStorage.removePendingOperation(op.id).then(() => {
@@ -753,7 +733,7 @@ class SyncManager {
     } catch (error) {
       console.error(`Erro ao sincronizar operação ${op.id}:`, error.message);
       const newRetryCount = op.retryCount + 1;
-      
+
       if (newRetryCount >= this.maxRetries) {
         const errorMsg = `Falha após ${this.maxRetries} tentativas: ${error.message}`;
         await offlineStorage.updateOperationStatus(op.id, 'error', errorMsg);

@@ -483,8 +483,6 @@ export default function ChecklistDetails() {
                                     className="bg-white text-blue-700 p-1 rounded-full shadow-md"
                                     title="Ver em tamanho real"
                                     aria-label="Abrir imagem em tamanho real"
-                                    className="bg-white text-blue-700 p-1 rounded-full shadow-md"
-                                    title="Ver em tamanho real"
                                   >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                       <path d="M15 3h6v6"></path>
