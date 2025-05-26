@@ -52,24 +52,35 @@ class SyncManager {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // Reduzido para 3 segundos
 
       const response = await fetch('/api/ping', { 
-        method: 'HEAD',
+        method: 'GET', // Mudado para GET
         cache: 'no-store',
-        headers: { 'Cache-Control': 'no-cache' },
+        headers: { 
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
         signal: controller.signal
       });
 
       clearTimeout(timeoutId);
-      this.updateOnlineStatus(response.ok);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Ping bem-sucedido:', data);
+        this.updateOnlineStatus(true);
+      } else {
+        console.log('Ping falhou com status:', response.status);
+        this.updateOnlineStatus(false);
+      }
     } catch (error) {
-      console.log('Erro ao verificar conexão:', error);
+      console.log('Erro ao verificar conexão:', error.name, error.message);
       this.updateOnlineStatus(false);
     }
 
     // Reagendar verificação
-    setTimeout(() => this.checkRealOnlineStatus(), 60000); // A cada minuto
+    setTimeout(() => this.checkRealOnlineStatus(), 90000); // A cada 1.5 minutos
   }
 
   // Handler para eventos online/offline

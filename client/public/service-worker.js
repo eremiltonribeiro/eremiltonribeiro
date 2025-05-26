@@ -135,18 +135,26 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Para navegação e outros recursos, usar estratégia Network First
+  // Para navegação e outros recursos, usar estratégia Network First com timeout
   event.respondWith(
-    fetch(event.request)
+    Promise.race([
+      fetch(event.request),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Timeout')), 8000) // 8 segundos timeout
+      )
+    ])
       .then(response => {
         // Se a resposta for válida, armazenar no cache
-        if (response && response.status === 200) {
+        if (response && response.status === 200 && response.type === 'basic') {
           // Clonar a resposta para o cache
           const responseToCache = response.clone();
 
           caches.open(CACHE_NAME)
             .then(cache => {
               cache.put(event.request, responseToCache);
+            })
+            .catch(error => {
+              console.log('[Service Worker] Erro ao salvar no cache:', error);
             });
         }
 
@@ -165,7 +173,9 @@ self.addEventListener('fetch', event => {
         // Para navegação, fornecer página offline
         if (event.request.mode === 'navigate') {
           const offlineResponse = await caches.match(OFFLINE_URL);
-          return offlineResponse;
+          if (offlineResponse) {
+            return offlineResponse;
+          }
         }
 
         return new Response('Recurso não disponível offline', {
@@ -241,35 +251,18 @@ self.addEventListener('sync', event => {
   }
 });
 
-// Periodicamente, verificar conexão e tentar sincronizar
-// Este setInterval já envia CHECK_SYNC, que pode acionar a lógica de sync no cliente.
-// O evento 'sync' abaixo é mais robusto para quando o navegador detecta conectividade.
+// Periodicamente, verificar conexão e tentar sincronizar (apenas se online)
 setInterval(() => {
   if (navigator.onLine) {
-    console.log('[Service Worker] Verificação periódica de sincronização (CHECK_SYNC)');
+    console.log('[Service Worker] Verificação periódica de sincronização');
     self.clients.matchAll().then(clients => {
-      if (clients.length > 0) {
-        // Envia para o primeiro cliente encontrado. Idealmente, todos os clientes ativos deveriam ser notificados
-        // ou a lógica de sincronização deveria ser gerenciada centralmente pelo SW se ele pudesse fazer mais.
-        clients.forEach(client => { // Notificar todos os clientes
-            client.postMessage({
-              type: 'CHECK_SYNC' // O cliente pode usar isso para verificar se precisa iniciar uma sincronização
-            });
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'CHECK_SYNC'
         });
-      }
+      });
+    }).catch(error => {
+      console.log('[Service Worker] Erro ao notificar clientes:', error);
     });
   }
-}, 60000); // Verificar a cada minuto
-
-// O evento 'sync' é o principal gatilho para a sincronização em background
-// quando o navegador detecta que a conexão foi restaurada.
-// self.addEventListener('sync', event => { // Comentado pois já existe um manipulador acima
-//   if (event.tag === 'sync-pending-operations') {
-//     console.log('[Service Worker] Sincronizando operações pendentes via background sync (já manipulado)');
-//     // A lógica já está no primeiro listener 'sync'.
-//     // Esta duplicata pode ser removida.
-//   }
-// });
-
-// O bloco final com CK_SYNC e 300000ms parece ser um erro de digitação ou um fragmento de código.
-// Removendo-o para evitar erros ou comportamento inesperado.
+}, 120000); // Verificar a cada 2 minutos (reduzido a frequência)
