@@ -320,7 +320,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                     <FormLabel>Veículo <span className="text-red-500">*</span></FormLabel>
                     <Select
                       onValueChange={(value) => field.onChange(parseInt(value))}
-                      defaultValue={field.value?.toString()}
+                      value={field.value?.toString() || ""}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -348,7 +348,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                     <FormLabel>Motorista <span className="text-red-500">*</span></FormLabel>
                     <Select
                       onValueChange={(value) => field.onChange(parseInt(value))}
-                      defaultValue={field.value?.toString()}
+                      value={field.value?.toString() || ""}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -469,7 +469,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                       <FormLabel>Posto <span className="text-red-500">*</span></FormLabel>
                       <Select
                         onValueChange={(value) => field.onChange(parseInt(value))}
-                        defaultValue={field.value?.toString()}
+                        value={field.value?.toString() || ""}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -497,7 +497,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                       <FormLabel>Tipo de Combustível <span className="text-red-500">*</span></FormLabel>
                       <Select
                         onValueChange={(value) => field.onChange(parseInt(value))}
-                        defaultValue={field.value?.toString()}
+                        value={field.value?.toString() || ""}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -639,7 +639,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                       <FormLabel>Tipo de Manutenção <span className="text-red-500">*</span></FormLabel>
                       <Select
                         onValueChange={(value) => field.onChange(parseInt(value))}
-                        defaultValue={field.value?.toString()}
+                        value={field.value?.toString() || ""}
                       >
                         <FormControl>
                           <SelectTrigger>
