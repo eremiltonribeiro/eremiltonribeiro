@@ -240,7 +240,15 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
     isLoadingFuelTypes ||
     isLoadingMaintenanceTypes;
 
-  if (isLoading) {
+  // Verificar se todos os dados necessários estão carregados
+  const allDataLoaded = 
+    vehicles && vehicles.length >= 0 &&
+    drivers && drivers.length >= 0 &&
+    fuelStations && fuelStations.length >= 0 &&
+    fuelTypes && fuelTypes.length >= 0 &&
+    maintenanceTypes && maintenanceTypes.length >= 0;
+
+  if (isLoading || !allDataLoaded) {
     return (
       <Card className="w-full mb-20">
         <CardHeader>
@@ -321,6 +329,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                     <Select
                       onValueChange={(value) => field.onChange(parseInt(value))}
                       value={field.value?.toString() || ""}
+                      key={`vehicle-${vehicles.length}`}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -328,11 +337,17 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Array.isArray(vehicles) && vehicles.map((vehicle: any) => (
-                          <SelectItem key={vehicle.id} value={vehicle.id.toString()}>
-                            {vehicle.name} - {vehicle.plate}
+                        {Array.isArray(vehicles) && vehicles.length > 0 ? (
+                          vehicles.map((vehicle: any) => (
+                            <SelectItem key={vehicle.id} value={vehicle.id.toString()}>
+                              {vehicle.name} - {vehicle.plate}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="" disabled>
+                            Nenhum veículo cadastrado
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -349,6 +364,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                     <Select
                       onValueChange={(value) => field.onChange(parseInt(value))}
                       value={field.value?.toString() || ""}
+                      key={`driver-${drivers.length}`}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -356,11 +372,17 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {Array.isArray(drivers) && drivers.map((driver: any) => (
-                          <SelectItem key={driver.id} value={driver.id.toString()}>
-                            {driver.name}
+                        {Array.isArray(drivers) && drivers.length > 0 ? (
+                          drivers.map((driver: any) => (
+                            <SelectItem key={driver.id} value={driver.id.toString()}>
+                              {driver.name}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value="" disabled>
+                            Nenhum motorista cadastrado
                           </SelectItem>
-                        ))}
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -470,6 +492,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                       <Select
                         onValueChange={(value) => field.onChange(parseInt(value))}
                         value={field.value?.toString() || ""}
+                        key={`fuelStation-${fuelStations.length}`}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -477,11 +500,17 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {Array.isArray(fuelStations) && fuelStations.map((station: any) => (
-                            <SelectItem key={station.id} value={station.id.toString()}>
-                              {station.name}
+                          {Array.isArray(fuelStations) && fuelStations.length > 0 ? (
+                            fuelStations.map((station: any) => (
+                              <SelectItem key={station.id} value={station.id.toString()}>
+                                {station.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="" disabled>
+                              Nenhum posto cadastrado
                             </SelectItem>
-                          ))}
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -498,6 +527,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                       <Select
                         onValueChange={(value) => field.onChange(parseInt(value))}
                         value={field.value?.toString() || ""}
+                        key={`fuelType-${fuelTypes.length}`}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -505,11 +535,17 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {Array.isArray(fuelTypes) && fuelTypes.map((type: any) => (
-                            <SelectItem key={type.id} value={type.id.toString()}>
-                              {type.name}
+                          {Array.isArray(fuelTypes) && fuelTypes.length > 0 ? (
+                            fuelTypes.map((type: any) => (
+                              <SelectItem key={type.id} value={type.id.toString()}>
+                                {type.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="" disabled>
+                              Nenhum tipo de combustível cadastrado
                             </SelectItem>
-                          ))}
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -640,6 +676,7 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                       <Select
                         onValueChange={(value) => field.onChange(parseInt(value))}
                         value={field.value?.toString() || ""}
+                        key={`maintenanceType-${maintenanceTypes.length}`}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -647,11 +684,17 @@ export function RegistrationForm({ editId, editType, mode }: RegistrationFormPro
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {Array.isArray(maintenanceTypes) && maintenanceTypes.map((type: any) => (
-                            <SelectItem key={type.id} value={type.id.toString()}>
-                              {type.name}
+                          {Array.isArray(maintenanceTypes) && maintenanceTypes.length > 0 ? (
+                            maintenanceTypes.map((type: any) => (
+                              <SelectItem key={type.id} value={type.id.toString()}>
+                                {type.name}
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="" disabled>
+                              Nenhum tipo de manutenção cadastrado
                             </SelectItem>
-                          ))}
+                          )}
                         </SelectContent>
                       </Select>
                       <FormMessage />
