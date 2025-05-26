@@ -72,6 +72,17 @@ class SyncManager {
     setTimeout(() => this.checkRealOnlineStatus(), 60000); // A cada minuto
   }
 
+  // Handler para eventos online/offline
+  private handleOnlineStatus = () => {
+    console.log(`Evento de navegador: ${navigator.onLine ? 'Online' : 'Offline'}`);
+    if (navigator.onLine) {
+      // Verificação adicional da conexão real
+      this.checkRealOnlineStatus();
+    } else {
+      this.updateOnlineStatus(false);
+    }
+  }
+
   // Atualiza o status online e notifica listeners
   private updateOnlineStatus(status: boolean) {
     if (this.isOnline !== status) {
@@ -88,65 +99,6 @@ class SyncManager {
 
       // Atualiza visual para o usuário
       this.updateOfflineUI(status);
-    }
-  }
-
-  // Método para atualizar a UI com status offline/online
-  private updateOfflineUI(online: boolean) {
-    // Atualiza a interface para mostrar status
-    const offlineIndicator = document.getElementById('offline-indicator');
-
-    if (!offlineIndicator) {
-      // Cria o indicador se não existir
-      const indicator = document.createElement('div');
-      indicator.id = 'offline-indicator';
-      indicator.style.position = 'fixed';
-      indicator.style.bottom = '10px';
-      indicator.style.right = '10px';
-      indicator.style.padding = '8px 16px';
-      indicator.style.borderRadius = '4px';
-      indicator.style.zIndex = '9999';
-      indicator.style.fontWeight = 'bold';
-      indicator.style.transition = 'all 0.3s ease';
-      document.body.appendChild(indicator);
-    }
-
-    const indicator = document.getElementById('offline-indicator');
-    if (indicator) {
-      if (!online) {
-        indicator.textContent = 'Você está offline. Suas alterações serão salvas localmente.';
-        indicator.style.backgroundColor = '#f8d7da';
-        indicator.style.color = '#721c24';
-        indicator.style.display = 'block';
-      } else {
-        // Verifica se há operações pendentes
-        this.getPendingOperationsCount().then(count => {
-          if (count > 0) {
-            indicator.textContent = `Sincronizando ${count} operações...`;
-            indicator.style.backgroundColor = '#fff3cd';
-            indicator.style.color = '#856404';
-            indicator.style.display = 'block';
-          } else {
-            // Fade out e depois esconde
-            indicator.style.opacity = '0';
-            setTimeout(() => {
-              indicator.style.display = 'none';
-              indicator.style.opacity = '1';
-            }, 300);
-          }
-        });
-      }
-    }
-  }
-
-  // Handler para eventos online/offline
-  private handleOnlineStatus = () => {
-    console.log(`Evento de navegador: ${navigator.onLine ? 'Online' : 'Offline'}`);
-    if (navigator.onLine) {
-      // Verificação adicional da conexão real
-      this.checkRealOnlineStatus();
-    } else {
-      this.updateOnlineStatus(false);
     }
   }
 
@@ -243,17 +195,6 @@ class SyncManager {
           });
         }
       }
-    }
-  }
-
-  // Handler para eventos online/offline
-  private handleOnlineStatus = () => {
-    console.log(`Evento de navegador: ${navigator.onLine ? 'Online' : 'Offline'}`);
-    if (navigator.onLine) {
-      // Verificação adicional da conexão real
-      this.checkRealOnlineStatus();
-    } else {
-      this.updateOnlineStatus(false); // Isso vai chamar updateOfflineUI e toast
     }
   }
 
