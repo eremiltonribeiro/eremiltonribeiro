@@ -1,0 +1,13 @@
+[
+  {
+    "id": "dev-user-123",
+    "username": "user1",
+    "createdAt": "2025-05-26T01:49:37.139Z",
+    "updatedAt": "2025-05-26T01:49:44.568Z",
+    "email": "dev@example.com",
+    "firstName": "Usuário",
+    "lastName": "Desenvolvimento",
+    "profileImageUrl": "/uploads/default-profile.png",
+    "role": "admin"
+  }
+]
