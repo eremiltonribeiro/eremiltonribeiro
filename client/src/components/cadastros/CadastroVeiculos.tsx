@@ -342,22 +342,23 @@ export function CadastroVeiculos() {
                 )}
 
                 <Button
-                type="submit"
-                variant={formMode === "create" ? "default" : "success"}
-                className="flex items-center gap-1"
-                disabled={isSubmitting || isLoading}
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  formMode === "create" ? "Cadastrar Veículo" : "Atualizar Veículo"
-                )}
-              </Button>
-            </div>
-          </form>
+                  type="submit"
+                  variant={formMode === "create" ? "default" : "success"}
+                  className="flex items-center gap-1"
+                  disabled={isSubmitting || isLoading}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    formMode === "create" ? "Cadastrar Veículo" : "Atualizar Veículo"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </Form>
         </CardContent>
       </Card>
       
